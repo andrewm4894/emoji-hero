@@ -1,7 +1,7 @@
 BACKEND_PORT ?= 8787
 FRONTEND_PORT ?= 5188
 
-.PHONY: help install dev backend frontend build clean
+.PHONY: help install dev backend frontend build clean lint format deploy logs status open
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -31,3 +31,15 @@ format: ## Format backend code
 
 clean: ## Remove build artifacts
 	rm -rf frontend/dist backend/.venv __pycache__ .ruff_cache
+
+deploy: ## Deploy to Railway
+	railway up
+
+logs: ## Tail Railway deploy logs
+	railway logs
+
+status: ## Show Railway service status
+	railway service status
+
+open: ## Open Railway dashboard
+	railway open
