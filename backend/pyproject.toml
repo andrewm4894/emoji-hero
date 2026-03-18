@@ -5,6 +5,7 @@ description = "Chat-powered custom emoji generator for Slack"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.135.1",
+    "h2>=4.3.0",
     "httpx>=0.28.1",
     "opentelemetry-exporter-otlp",
     "opentelemetry-sdk",

@@ -33,17 +33,12 @@ limiter = Limiter(key_func=get_remote_address)
 # Store conversation histories in memory (keyed by session_id)
 conversations: dict[str, list] = {}
 
-# OTEL provider reference for shutdown
-_tracer_provider = None
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _tracer_provider
-    _tracer_provider = setup_otel()
+    provider = setup_otel()
     yield
-    if _tracer_provider:
-        _tracer_provider.shutdown()
+    if provider:
+        provider.shutdown()
 
 
 app = FastAPI(title="Emoji Hero", version="0.1.0", lifespan=lifespan)
