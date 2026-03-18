@@ -1,3 +1,5 @@
+import { getDistinctId, getSessionId } from "./posthog";
+
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
 export interface ChatChunk {
@@ -14,7 +16,11 @@ export async function streamChat(
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-POSTHOG-SESSION-ID": getSessionId(),
+      "X-POSTHOG-DISTINCT-ID": getDistinctId(),
+    },
     body: JSON.stringify({ message, session_id: sessionId }),
   });
 

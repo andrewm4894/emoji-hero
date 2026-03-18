@@ -1,9 +1,15 @@
 # Stage 1: Build frontend
 FROM node:22-slim AS frontend-build
+
+ARG VITE_POSTHOG_KEY=""
+ARG VITE_POSTHOG_HOST="https://us.i.posthog.com"
+
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+ENV VITE_POSTHOG_KEY=$VITE_POSTHOG_KEY
+ENV VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST
 RUN npm run build
 
 # Stage 2: Python backend

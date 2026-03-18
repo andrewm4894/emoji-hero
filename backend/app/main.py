@@ -3,6 +3,8 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from opentelemetry import trace
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -67,9 +69,21 @@ class ChatRequest(BaseModel):
 async def chat(request: Request, body: ChatRequest):
     """Chat with the emoji agent. Streams all events as SSE."""
     history = conversations.get(body.session_id, [])
-    deps = EmojiDeps(distinct_id=body.session_id)
+
+    # Read PostHog headers from frontend for session linking
+    ph_distinct_id = request.headers.get("x-posthog-distinct-id", body.session_id)
+    ph_session_id = request.headers.get("x-posthog-session-id", "")
+
+    deps = EmojiDeps(distinct_id=ph_distinct_id)
 
     async def stream():
+        # Set OTEL span attributes for PostHog session linking
+        span = trace.get_current_span()
+        if span.is_recording():
+            span.set_attribute("posthog.distinct_id", ph_distinct_id)
+            if ph_session_id:
+                span.set_attribute("$session_id", ph_session_id)
+
         accumulated = ""
 
         async for event in emoji_agent.run_stream_events(

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { flushSync } from "react-dom";
 import { streamChat, getImageUrl, getDownloadUrl, type ChatChunk } from "./api";
+import { getDistinctId, trackEvent } from "./posthog";
 import "./App.css";
 
 interface Message {
@@ -27,7 +28,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState(() => getDistinctId() || crypto.randomUUID());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -193,7 +194,12 @@ function EmojiPreviews({ content }: { content: string }) {
               (e.target as HTMLImageElement).style.display = "none";
             }}
           />
-          <a className="download-btn" href={getDownloadUrl(id)} download>
+          <a
+            className="download-btn"
+            href={getDownloadUrl(id)}
+            download
+            onClick={() => trackEvent("emoji_downloaded", { image_id: id })}
+          >
             Download
           </a>
         </div>
