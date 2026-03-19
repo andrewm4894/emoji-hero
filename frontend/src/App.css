@@ -61,6 +61,28 @@
   font-style: italic;
 }
 
+/* Search result image gallery */
+.search-result-image {
+  display: inline-block;
+  margin: 6px 6px 0 0;
+}
+
+.search-result-image img {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+  background: var(--surface);
+}
+
+.search-result-image img:hover {
+  border-color: var(--accent);
+  transform: scale(1.05);
+}
+
 /* Emoji images inline */
 .emoji-preview {
   display: inline-flex;

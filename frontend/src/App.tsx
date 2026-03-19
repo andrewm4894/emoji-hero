@@ -121,7 +121,7 @@ function App() {
         <div className="messages">
           {messages.map((msg, i) => (
             <div key={i} className={`message ${msg.role}`}>
-              <div>{msg.content}</div>
+              <MessageContent content={msg.content} />
               {msg.role === "assistant" && msg.content && (
                 <EmojiPreviews content={msg.content} />
               )}
@@ -148,6 +148,50 @@ function App() {
         </form>
       </div>
     </>
+  );
+}
+
+const MD_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g;
+
+function MessageContent({ content }: { content: string }) {
+  // Split content into text and markdown images
+  const parts: { type: "text" | "image"; text?: string; alt?: string; url?: string }[] = [];
+  let lastIndex = 0;
+
+  for (const match of content.matchAll(MD_IMAGE_REGEX)) {
+    const before = content.slice(lastIndex, match.index);
+    if (before) parts.push({ type: "text", text: before });
+    parts.push({ type: "image", alt: match[1], url: match[2] });
+    lastIndex = match.index! + match[0].length;
+  }
+
+  const remaining = content.slice(lastIndex);
+  if (remaining) parts.push({ type: "text", text: remaining });
+
+  // If no images found, just render as text
+  if (!parts.some((p) => p.type === "image")) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    <div>
+      {parts.map((part, i) =>
+        part.type === "text" ? (
+          <span key={i}>{part.text}</span>
+        ) : (
+          <div key={i} className="search-result-image">
+            <img
+              src={part.url}
+              alt={part.alt || "search result"}
+              loading="lazy"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+          </div>
+        )
+      )}
+    </div>
   );
 }
 
