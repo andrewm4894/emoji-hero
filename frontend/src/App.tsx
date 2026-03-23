@@ -24,13 +24,40 @@ const SUGGESTIONS = [
   "Find a 'mind blown' gif for slack",
 ];
 
+const THEMES = [
+  { id: "dark", name: "Dark", color: "#f59e0b" },
+  { id: "light", name: "Light", color: "#3b82f6" },
+  { id: "midnight", name: "Midnight", color: "#06b6d4" },
+  { id: "sunset", name: "Sunset", color: "#f97316" },
+  { id: "forest", name: "Forest", color: "#10b981" },
+] as const;
+
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [sessionId] = useState(() => getDistinctId() || crypto.randomUUID());
+  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+  const [themeOpen, setThemeOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const themeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (!themeOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (themeRef.current && !themeRef.current.contains(e.target as Node)) {
+        setThemeOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [themeOpen]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -98,7 +125,29 @@ function App() {
       <div className="header">
         <span>🦸</span>
         <h1>Emoji Hero</h1>
-        <p>Custom Slack emoji, fast</p>
+        <div className="theme-picker" ref={themeRef}>
+          <button className="theme-toggle" onClick={() => setThemeOpen(!themeOpen)}>
+            🎨 Theme
+          </button>
+          {themeOpen && (
+            <div className="theme-dropdown">
+              {THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  className={`theme-option${theme === t.id ? " active" : ""}`}
+                  onClick={() => {
+                    setTheme(t.id);
+                    setThemeOpen(false);
+                    trackEvent("theme_changed", { theme: t.id });
+                  }}
+                >
+                  <span className="theme-swatch" style={{ background: t.color }} />
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {messages.length === 0 ? (
