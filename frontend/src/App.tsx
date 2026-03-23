@@ -122,37 +122,92 @@ function App() {
 
   return (
     <>
-      <div className="header">
-        <span>🦸</span>
-        <h1>Emoji Hero</h1>
-        <div className="theme-picker" ref={themeRef}>
-          <button className="theme-toggle" onClick={() => setThemeOpen(!themeOpen)}>
-            🎨 Theme
-          </button>
-          {themeOpen && (
-            <div className="theme-dropdown">
-              {THEMES.map((t) => (
-                <button
-                  key={t.id}
-                  className={`theme-option${theme === t.id ? " active" : ""}`}
-                  onClick={() => {
-                    setTheme(t.id);
-                    setThemeOpen(false);
-                    trackEvent("theme_changed", { theme: t.id });
-                  }}
-                >
-                  <span className="theme-swatch" style={{ background: t.color }} />
-                  {t.name}
-                </button>
-              ))}
+      <header className="header">
+        <div className="header-glow" />
+        <div className="header-inner">
+          <div className="header-brand">
+            <div className="header-logo">
+              <svg viewBox="0 0 128 128" width="36" height="36" aria-hidden="true">
+                <defs>
+                  <linearGradient id="logo-bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="var(--accent)" />
+                    <stop offset="100%" stopColor="var(--accent-hover)" />
+                  </linearGradient>
+                </defs>
+                <rect width="128" height="128" rx="26" fill="url(#logo-bg)" />
+                <rect x="4" y="4" width="120" height="120" rx="22" fill="none" stroke="white" strokeOpacity="0.25" strokeWidth="3" />
+                <polygon
+                  points="64,18 74.5,47.5 106,47.5 80.5,66 90,96 64,78 38,96 47.5,66 22,47.5 53.5,47.5"
+                  fill="white"
+                  fillOpacity="0.95"
+                />
+              </svg>
             </div>
-          )}
+            <div className="header-text">
+              <h1 className="header-title">
+                <span className="header-title-emoji">Emoji</span>
+                {" "}
+                <span className="header-title-hero">Hero</span>
+              </h1>
+              <span className="header-tagline">find & customize emoji for Slack</span>
+            </div>
+          </div>
+          <div className="header-actions">
+            <div className="theme-picker" ref={themeRef}>
+              <button
+                className="theme-toggle"
+                onClick={() => setThemeOpen(!themeOpen)}
+                aria-label="Change theme"
+              >
+                <span className="theme-toggle-swatches">
+                  {THEMES.slice(0, 5).map((t) => (
+                    <span key={t.id} className="theme-toggle-dot" style={{ background: t.color }} />
+                  ))}
+                </span>
+              </button>
+              {themeOpen && (
+                <div className="theme-dropdown">
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      className={`theme-option${theme === t.id ? " active" : ""}`}
+                      onClick={() => {
+                        setTheme(t.id);
+                        setThemeOpen(false);
+                        trackEvent("theme_changed", { theme: t.id });
+                      }}
+                    >
+                      <span className="theme-swatch" style={{ background: t.color }} />
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+        <div className="header-accent-line" />
+      </header>
 
       {messages.length === 0 ? (
         <div className="welcome">
-          <div className="emoji">🦸</div>
+          <div className="welcome-logo">
+            <svg viewBox="0 0 128 128" width="56" height="56" aria-hidden="true">
+              <defs>
+                <linearGradient id="welcome-bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="var(--accent)" />
+                  <stop offset="100%" stopColor="var(--accent-hover)" />
+                </linearGradient>
+              </defs>
+              <rect width="128" height="128" rx="26" fill="url(#welcome-bg)" />
+              <rect x="4" y="4" width="120" height="120" rx="22" fill="none" stroke="white" strokeOpacity="0.25" strokeWidth="3" />
+              <polygon
+                points="64,18 74.5,47.5 106,47.5 80.5,66 90,96 64,78 38,96 47.5,66 22,47.5 53.5,47.5"
+                fill="white"
+                fillOpacity="0.95"
+              />
+            </svg>
+          </div>
           <h2>What emoji do you need?</h2>
           <p>
             Tell me what you're looking for and I'll find, customize, and
