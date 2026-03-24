@@ -23,7 +23,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.agent import EmojiDeps, emoji_agent
-from app.analytics import setup_otel
+from app.analytics import setup_otel, shutdown_otel
 from app.config import settings
 from app.image_processing import get_image_path
 
@@ -35,10 +35,9 @@ conversations: dict[str, list] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    provider = setup_otel()
+    # OTEL is lazily initialized on first request so we can capture user.id
     yield
-    if provider:
-        provider.shutdown()
+    shutdown_otel()
 
 
 app = FastAPI(title="Emoji Hero", version="0.1.0", lifespan=lifespan)
@@ -69,15 +68,19 @@ async def chat(request: Request, body: ChatRequest):
     ph_distinct_id = request.headers.get("x-posthog-distinct-id", body.session_id)
     ph_session_id = request.headers.get("x-posthog-session-id", "")
 
+    # Lazy-init OTEL with the user's distinct_id as user.id on the resource
+    # (PostHog extracts distinct_id from resource attributes, not span attributes)
+    setup_otel(user_id=ph_distinct_id)
+
     deps = EmojiDeps(distinct_id=ph_distinct_id)
 
     async def stream():
-        # Set OTEL span attributes for PostHog session linking
+        # Set session IDs as span attributes — these flow through as event properties
         span = trace.get_current_span()
         if span.is_recording():
-            span.set_attribute("posthog.distinct_id", ph_distinct_id)
             if ph_session_id:
                 span.set_attribute("$session_id", ph_session_id)
+            span.set_attribute("$ai_session_id", body.session_id)
 
         accumulated = ""
 
