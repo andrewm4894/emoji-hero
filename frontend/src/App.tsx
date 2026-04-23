@@ -1,20 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { flushSync } from "react-dom";
-import { streamChat, getImageUrl, getDownloadUrl, type ChatChunk } from "./api";
+import { streamChat, type ChatChunk, type EmojiReady } from "./api";
 import { getDistinctId, trackEvent } from "./posthog";
 import "./App.css";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
-}
-
-const IMAGE_ID_REGEX = /\b([a-f0-9]{12})\b/g;
-
-function extractImageIds(text: string): string[] {
-  const matches = text.match(IMAGE_ID_REGEX);
-  if (!matches) return [];
-  return [...new Set(matches)];
+  emojis: EmojiReady[];
 }
 
 const SUGGESTIONS = [
@@ -70,13 +63,13 @@ function App() {
   const sendMessage = async (text: string) => {
     if (!text.trim() || isStreaming) return;
 
-    const userMessage: Message = { role: "user", content: text };
+    const userMessage: Message = { role: "user", content: text, emojis: [] };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsStreaming(true);
 
     // Add empty assistant message for streaming
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+    setMessages((prev) => [...prev, { role: "assistant", content: "", emojis: [] }]);
 
     try {
       await streamChat(text, sessionId, (chunk: ChatChunk) => {
@@ -94,6 +87,14 @@ function App() {
             } else if (chunk.type === "tool_result") {
               const label = `\n`;
               return [...updated, { ...last, content: last.content + label }];
+            } else if (chunk.type === "emoji_ready" && chunk.image_id && chunk.image_url && chunk.download_url) {
+              if (last.emojis.some((e) => e.image_id === chunk.image_id)) return prev;
+              const emoji: EmojiReady = {
+                image_id: chunk.image_id,
+                image_url: chunk.image_url,
+                download_url: chunk.download_url,
+              };
+              return [...updated, { ...last, emojis: [...last.emojis, emoji] }];
             }
             return prev;
           });
@@ -226,8 +227,8 @@ function App() {
           {messages.map((msg, i) => (
             <div key={i} className={`message ${msg.role}`}>
               <MessageContent content={msg.content} />
-              {msg.role === "assistant" && msg.content && (
-                <EmojiPreviews content={msg.content} />
+              {msg.role === "assistant" && msg.emojis.length > 0 && (
+                <EmojiPreviews emojis={msg.emojis} />
               )}
             </div>
           ))}
@@ -315,38 +316,23 @@ function toolLabel(tool: string, args?: Record<string, unknown>): string {
   return `\nRunning ${tool}...\n`;
 }
 
-function EmojiPreviews({ content }: { content: string }) {
-  const imageIds = extractImageIds(content);
-  const downloadIds = imageIds.filter((id) => {
-    const idx = content.indexOf(id);
-    const surrounding = content.slice(Math.max(0, idx - 80), idx + 80);
-    return (
-      surrounding.includes("download") ||
-      surrounding.includes("image_id") ||
-      surrounding.includes("Slack-ready") ||
-      surrounding.includes("slack-ready") ||
-      surrounding.includes("/api/")
-    );
-  });
-
-  if (downloadIds.length === 0) return null;
-
+function EmojiPreviews({ emojis }: { emojis: EmojiReady[] }) {
   return (
     <div className="emoji-preview">
-      {downloadIds.map((id) => (
-        <div key={id} className="emoji-card">
+      {emojis.map((emoji) => (
+        <div key={emoji.image_id} className="emoji-card">
           <img
-            src={getImageUrl(id)}
-            alt={`emoji ${id}`}
+            src={emoji.image_url}
+            alt={`emoji ${emoji.image_id}`}
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none";
             }}
           />
           <a
             className="download-btn"
-            href={getDownloadUrl(id)}
+            href={emoji.download_url}
             download
-            onClick={() => trackEvent("emoji_downloaded", { image_id: id })}
+            onClick={() => trackEvent("emoji_downloaded", { image_id: emoji.image_id })}
           >
             Download
           </a>

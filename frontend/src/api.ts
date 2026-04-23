@@ -2,11 +2,20 @@ import { getDistinctId, getSessionId } from "./posthog";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
+export interface EmojiReady {
+  image_id: string;
+  image_url: string;
+  download_url: string;
+}
+
 export interface ChatChunk {
-  type: "text_delta" | "done" | "tool_call" | "tool_result";
+  type: "text_delta" | "done" | "tool_call" | "tool_result" | "emoji_ready";
   content?: string;
   tool?: string;
   args?: Record<string, unknown>;
+  image_id?: string;
+  image_url?: string;
+  download_url?: string;
 }
 
 export async function streamChat(

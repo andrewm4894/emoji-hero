@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -32,6 +33,18 @@ limiter = Limiter(key_func=get_remote_address)
 
 # Store conversation histories in memory (keyed by session_id)
 conversations: dict[str, list] = {}
+
+# make_slack_ready's output format is defined in agent.py as
+# "Slack-ready! Final image_id: {hex12} ..." — parse that known shape.
+_SLACK_READY_ID_RE = re.compile(r"image_id:\s*([a-f0-9]{12})")
+
+
+def _extract_image_id(content) -> str | None:
+    if not isinstance(content, str):
+        return None
+    match = _SLACK_READY_ID_RE.search(content)
+    return match.group(1) if match else None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -97,26 +110,48 @@ async def chat(request: Request, body: ChatRequest):
             elif isinstance(event, PartStartEvent):
                 if isinstance(event.part, TextPart) and event.part.content:
                     accumulated += event.part.content
-                    chunk = json.dumps({"type": "text_delta", "content": event.part.content})
+                    chunk = json.dumps(
+                        {"type": "text_delta", "content": event.part.content}
+                    )
                     yield f"data: {chunk}\n\n"
 
             elif isinstance(event, PartDeltaEvent):
                 if isinstance(event.delta, TextPartDelta) and event.delta.content_delta:
                     accumulated += event.delta.content_delta
-                    chunk = json.dumps({"type": "text_delta", "content": event.delta.content_delta})
+                    chunk = json.dumps(
+                        {"type": "text_delta", "content": event.delta.content_delta}
+                    )
                     yield f"data: {chunk}\n\n"
 
             elif isinstance(event, FunctionToolCallEvent):
-                chunk = json.dumps({
-                    "type": "tool_call",
-                    "tool": event.part.tool_name,
-                    "args": event.part.args,
-                })
+                chunk = json.dumps(
+                    {
+                        "type": "tool_call",
+                        "tool": event.part.tool_name,
+                        "args": event.part.args,
+                    }
+                )
                 yield f"data: {chunk}\n\n"
 
             elif isinstance(event, FunctionToolResultEvent):
                 chunk = json.dumps({"type": "tool_result", "tool": event.tool_call_id})
                 yield f"data: {chunk}\n\n"
+
+                if (
+                    event.result.tool_name == "make_slack_ready"
+                    and event.result.outcome == "success"
+                ):
+                    image_id = _extract_image_id(event.result.content)
+                    if image_id:
+                        emoji_chunk = json.dumps(
+                            {
+                                "type": "emoji_ready",
+                                "image_id": image_id,
+                                "image_url": f"/api/images/{image_id}",
+                                "download_url": f"/api/download/{image_id}",
+                            }
+                        )
+                        yield f"data: {emoji_chunk}\n\n"
 
     return StreamingResponse(
         stream(),
@@ -156,7 +191,9 @@ async def health():
 
 # Serve frontend static files (built React app)
 FRONTEND_DIR = Path(
-    os.environ.get("FRONTEND_DIR", str(Path(__file__).parent.parent.parent / "frontend" / "dist"))
+    os.environ.get(
+        "FRONTEND_DIR", str(Path(__file__).parent.parent.parent / "frontend" / "dist")
+    )
 )
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
