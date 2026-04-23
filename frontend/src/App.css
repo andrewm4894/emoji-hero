@@ -466,3 +466,104 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
 }
+
+/* Mobile (<=640px) */
+@media (max-width: 640px) {
+  .header-inner {
+    padding: 12px 14px;
+    gap: 8px;
+  }
+
+  .header-brand {
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .header-text {
+    min-width: 0;
+  }
+
+  .header-logo svg {
+    width: 30px;
+    height: 30px;
+  }
+
+  .header-title {
+    font-size: 18px;
+  }
+
+  .header-tagline {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .messages {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .message {
+    max-width: 92%;
+    font-size: 13.5px;
+  }
+
+  .search-result-image img {
+    width: 80px;
+    height: 80px;
+  }
+
+  .emoji-preview {
+    gap: 6px;
+  }
+
+  .emoji-card img {
+    width: 56px;
+    height: 56px;
+  }
+
+  .emoji-card .download-btn {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+
+  .input-area {
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .input-area input {
+    padding: 12px 14px;
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .input-area button {
+    padding: 12px 16px;
+    min-height: 44px;
+  }
+
+  .theme-toggle {
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  .theme-dropdown {
+    min-width: 180px;
+  }
+
+  .welcome {
+    padding: 32px 16px;
+  }
+
+  .welcome h2 {
+    font-size: 18px;
+  }
+
+  .suggestions button {
+    padding: 8px 14px;
+    min-height: 36px;
+  }
+}
