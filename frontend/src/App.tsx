@@ -334,24 +334,57 @@ function EmojiPreviews({ content }: { content: string }) {
   return (
     <div className="emoji-preview">
       {downloadIds.map((id) => (
-        <div key={id} className="emoji-card">
-          <img
-            src={getImageUrl(id)}
-            alt={`emoji ${id}`}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-          <a
-            className="download-btn"
-            href={getDownloadUrl(id)}
-            download
-            onClick={() => trackEvent("emoji_downloaded", { image_id: id })}
-          >
-            Download
-          </a>
-        </div>
+        <EmojiCard key={id} id={id} />
       ))}
+    </div>
+  );
+}
+
+function EmojiCard({ id }: { id: string }) {
+  const [hasAlpha, setHasAlpha] = useState(false);
+
+  const handleLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    try {
+      const size = 32;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, size, size);
+      const { data } = ctx.getImageData(0, 0, size, size);
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] < 255) {
+          setHasAlpha(true);
+          return;
+        }
+      }
+    } catch {
+      // cross-origin or decode failure — leave checkerboard off
+    }
+  };
+
+  return (
+    <div className="emoji-card">
+      <img
+        src={getImageUrl(id)}
+        alt={`emoji ${id}`}
+        crossOrigin="anonymous"
+        className={hasAlpha ? "has-alpha" : ""}
+        onLoad={handleLoad}
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = "none";
+        }}
+      />
+      <a
+        className="download-btn"
+        href={getDownloadUrl(id)}
+        download
+        onClick={() => trackEvent("emoji_downloaded", { image_id: id })}
+      >
+        Download
+      </a>
     </div>
   );
 }

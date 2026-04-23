@@ -215,6 +215,9 @@
   object-fit: contain;
   image-rendering: pixelated;
   border-radius: 4px;
+}
+
+.emoji-card img.has-alpha {
   background: repeating-conic-gradient(var(--checker-a) 0% 25%, var(--checker-b) 0% 50%) 50% / 16px 16px;
 }
 
