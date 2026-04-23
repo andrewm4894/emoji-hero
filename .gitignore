@@ -5,6 +5,12 @@ frontend/dist/
 # Playwright
 .playwright-mcp/
 
+# Gas Town / polecat session scaffolding
+.beads/
+.claude/
+.runtime/
+CLAUDE.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
