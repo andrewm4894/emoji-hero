@@ -104,14 +104,36 @@ Plano emits on its LLM span: `llm.model`, `llm.usage.{prompt,completion,total,ca
 `signals.{quality,quality_score,efficiency_score,turn_count}` (layered interaction/execution
 signals only emit when they fire).
 
-### Open findings / TODO
+### Signals rendering — root cause & fix (resolved)
 
-- ⚠️ **Plano's signal spans are not surfacing in PostHog LLM Analytics yet.** The bridge
-  forwards them and PostHog returns `2xx`, but a query for `signals.quality IS NOT NULL`
-  (or `service.name LIKE '%plano%'`) returns zero generations. Likely because Plano's spans
-  carry no `gen_ai.operation.name`, so PostHog doesn't classify them as `$ai_generation`.
-  Next: confirm whether they land as `$ai_span` / raw events, and whether a small collector
-  transform (set `gen_ai.operation.name`, promote the message preview) is needed.
+Initially Plano's signal spans did **not** surface in PostHog LLM Analytics despite the
+bridge getting `2xx`. Root cause, confirmed in the PostHog source
+(`rust/capture/src/otel/providers.rs`): the ingest only accepts spans whose attributes
+match the prefixes `gen_ai.`, `ai.`, `traceloop.` / `llm.request.type`, or `pydantic_ai.`.
+**Plain `llm.` is not accepted** — so Plano's `llm.*` + `signals.*` spans fail
+`get_provider_raw()` and are dropped at `fan_out.rs` *before* any event is built (the `2xx`
+is just the OTLP request being accepted). (Note: PostHog's OTEL docs *claim* `llm.*` is
+accepted — a doc/code mismatch; see "Upstream fix" below.)
+
+**Fix (implemented):** the bridge collector's `transform` processor maps Plano's `llm.*`
+onto the `gen_ai.*` keys PostHog reads, so spans classify as `$ai_generation`. Since
+`fan_out.rs` copies every span attribute through, `signals.*` then ride along as custom
+properties for free. Verified: generations now appear in the dev project with `signals.*`
+queryable, and Plano's 🚩 marker shows in the trace name on `severe` conversations.
+
+```
+signals.quality = "severe" / "neutral" / ...   (queryable property)
+trace name: "POST /v1/chat/completions openrouter/openai/gpt-5.1-codex-mini 🚩"
+```
+
+### Upstream fix (PostHog)
+
+The proper fix is upstream and **not Plano-specific**: add a generic `llm.` provider entry
+to `SUPPORTED_PROVIDERS` in `rust/capture/src/otel/providers.rs` (which is what the docs
+already promise). That would make any `llm.*`-emitting tool — Plano included — work without
+a transform, once deployed to Cloud. Tracked as a follow-up PR to `posthog/posthog`.
+
+### Open findings / TODO
 - In test conversations, interaction signals stayed `neutral` (`quality_score 50`) — only
   top-level signals populated. Need conversations that deliberately trip satisfaction /
   disengagement / loops to see the richer signal set and the 🚩 flag.
