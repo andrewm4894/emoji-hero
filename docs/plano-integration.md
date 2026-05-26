@@ -137,10 +137,59 @@ deliberately scoped to avoid over-capturing non-AI traffic. Once that ships to C
 collector transform here becomes unnecessary. (Pending the LLM analytics team's call on
 accepting `llm.*` vs. correcting the docs.)
 
-### Open findings / TODO
-- In test conversations, interaction signals stayed `neutral` (`quality_score 50`) — only
-  top-level signals populated. Need conversations that deliberately trip satisfaction /
-  disengagement / loops to see the richer signal set and the 🚩 flag.
-- Decide whether to keep all three telemetry sources or consolidate (e.g. drop the app's
-  own OTEL and rely on Plano, or propagate W3C `traceparent` so Plano's signals attach to
-  the same trace as the `emoji_agent` run).
+### Caveat: Plano spans make poor LLM-Analytics *generations*
+
+Getting the spans ingested ≠ getting a good result. Inspecting a Plano generation in the
+dev project (e.g. `service.name = plano(llm)`, trace name ends in 🚩) shows the problem:
+
+- **What maps:** `$ai_model`, `$ai_input_tokens`, `$ai_output_tokens`, `$ai_total_cost_usd`,
+  `$ai_latency` (from the transform + token mapping).
+- **What doesn't:** there is **no `$ai_input` / `$ai_output_choices`** — Plano never emits the
+  message arrays, only a single truncated `llm.user_message_preview` (e.g. *"no!!! that is
+  NOT what I wanted, fix it!"*). So the generation renders with **no conversation content**.
+  Everything else (`llm.*`, `http.*`, `component`, `request_id`, `signals.*`) sits as raw
+  unmapped properties. `$ai_model` is even the ugly gateway alias
+  `openrouter/openai/gpt-5.1-codex-mini`.
+
+Root reason: **Plano's telemetry isn't generation-shaped.** It's a proxy span (`llm.*` +
+http + signals), not a `gen_ai`-convention LLM call with input/output messages. The
+transform can *label* it `$ai_generation`, but can't manufacture IO that isn't in the span.
+
+This also surfaces **duplicate generations per call**: the rich `emoji_agent` (pydantic-ai)
+generation, this sparse `plano(llm)` one, *and* OpenRouter's native integration = up to
+three generations for one LLM call. Plano's only unique contribution is the `signals.*`;
+its generation content is strictly worse than the other two sources. So "make Plano a
+generation" is the wrong frame — it clutters the Generations view to smuggle in properties.
+
+### Options (undecided — parked)
+
+1. **Unify via `traceparent`** (most correct) — propagate W3C trace context from the
+   pydantic-ai HTTP client through to Plano so `signals.*` attach to the *same* trace as the
+   rich `emoji_agent` generation (as a child span / properties / `$ai_metric`). One good
+   trace, signals attached. Feasibility TBD (does pydantic-ai emit `traceparent`; does Plano
+   forward it?).
+2. **Downgrade Plano spans to `$ai_span`** (quick declutter) — stop classifying them as
+   `$ai_generation` so they don't duplicate/clutter the Generations list; `signals.*` stay
+   queryable as span properties. ~One-line change to the collector transform.
+3. **Keep Plano out of LLM Analytics entirely** — the generation view is already well served
+   by pydantic-ai + OpenRouter; surface signals via a dashboard on the `signals.*`
+   properties or as metrics instead.
+
+This also feeds back into [#60064](https://github.com/PostHog/posthog/pull/60064): auto-classifying
+bare-`llm.*` proxy spans as `$ai_generation` produces exactly these contentless generations,
+so the upstream call may be "accept the span but classify as `$ai_span`" rather than a
+generation. Flag for the LLM analytics team.
+
+### Resolved / verified along the way
+- Signals **do** fire when provoked: a frustration+correction conversation produced
+  `signals.quality = severe`, `quality_score = 0`, `interaction.disengagement.count = 4`
+  (severity 2), `escalation.requested = true`, and the 🚩 marker. (Earlier "all neutral"
+  was just benign test conversations.)
+- `signals.*` are queryable as event properties in the dev project once the spans are
+  accepted (the transform / the upstream PR).
+
+### Open TODO
+- Pick one of the three options above (or leave as-is for the dogfood).
+- Minor: Plano generations get random-UUID `distinct_id`s (Plano doesn't propagate the
+  PostHog distinct_id), so signals aren't tied to the app user. Would need Plano to forward
+  a distinct_id (or set it on the span).
