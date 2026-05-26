@@ -45,13 +45,28 @@ Always prepare the final emoji for Slack before telling the user it's ready to d
 Keep responses concise and fun — you're making emoji, not writing essays!
 """
 
-openai_client = AsyncOpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=settings.openrouter_api_key,
-)
+# Route LLM calls through Plano when configured. Plano proxies to OpenRouter
+# and computes model-free Signals, so the client sends a placeholder key (Plano
+# injects the real upstream key). Otherwise call OpenRouter directly.
+#
+# Plano selects the OpenRouter provider via the `openrouter/` model prefix and
+# forwards the rest (e.g. `openai/gpt-5.1-codex-mini`) upstream, so we prefix
+# the configured model when routing through the gateway.
+if settings.plano_gateway_url:
+    openai_client = AsyncOpenAI(
+        base_url=settings.plano_gateway_url,
+        api_key="EMPTY",
+    )
+    model_name = f"openrouter/{settings.openrouter_model}"
+else:
+    openai_client = AsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=settings.openrouter_api_key,
+    )
+    model_name = settings.openrouter_model
 
 model = OpenAIChatModel(
-    settings.openrouter_model,
+    model_name,
     provider=OpenAIProvider(openai_client=openai_client),
 )
 
