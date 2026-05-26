@@ -128,10 +128,14 @@ trace name: "POST /v1/chat/completions openrouter/openai/gpt-5.1-codex-mini 🚩
 
 ### Upstream fix (PostHog)
 
-The proper fix is upstream and **not Plano-specific**: add a generic `llm.` provider entry
-to `SUPPORTED_PROVIDERS` in `rust/capture/src/otel/providers.rs` (which is what the docs
-already promise). That would make any `llm.*`-emitting tool — Plano included — work without
-a transform, once deployed to Cloud. Tracked as a follow-up PR to `posthog/posthog`.
+The proper fix is upstream and **not Plano-specific** — draft PR
+[PostHog/posthog#60064](https://github.com/PostHog/posthog/pull/60064). It adds an
+`LLM_GENERIC` provider to `SUPPORTED_PROVIDERS` in `rust/capture/src/otel/providers.rs`,
+but **narrowly**: it accepts `llm.*` spans only when they carry `llm.model` or `llm.usage.*`
+(i.e. clearly LLM calls), not the whole `llm.*` namespace — because the ingestion was
+deliberately scoped to avoid over-capturing non-AI traffic. Once that ships to Cloud, the
+collector transform here becomes unnecessary. (Pending the LLM analytics team's call on
+accepting `llm.*` vs. correcting the docs.)
 
 ### Open findings / TODO
 - In test conversations, interaction signals stayed `neutral` (`quality_score 50`) — only
