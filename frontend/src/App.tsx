@@ -87,6 +87,9 @@ function App() {
             } else if (chunk.type === "tool_result") {
               const label = `\n`;
               return [...updated, { ...last, content: last.content + label }];
+            } else if (chunk.type === "error") {
+              const message = chunk.content || "Something went wrong. Please try again.";
+              return [...updated, { ...last, content: last.content ? `${last.content}\n\n${message}` : message }];
             } else if (chunk.type === "emoji_ready" && chunk.image_id && chunk.image_url && chunk.download_url) {
               if (last.emojis.some((e) => e.image_id === chunk.image_id)) return prev;
               const emoji: EmojiReady = {

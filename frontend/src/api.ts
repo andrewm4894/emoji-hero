@@ -9,7 +9,7 @@ export interface EmojiReady {
 }
 
 export interface ChatChunk {
-  type: "text_delta" | "done" | "tool_call" | "tool_result" | "emoji_ready";
+  type: "text_delta" | "done" | "tool_call" | "tool_result" | "emoji_ready" | "error";
   content?: string;
   tool?: string;
   args?: Record<string, unknown>;

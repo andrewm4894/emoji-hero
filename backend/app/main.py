@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 from contextlib import asynccontextmanager
@@ -27,6 +28,8 @@ from app.agent import EmojiDeps, emoji_agent
 from app.analytics import setup_otel, shutdown_otel
 from app.config import settings
 from app.image_processing import get_image_path
+
+logger = logging.getLogger(__name__)
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -97,61 +100,79 @@ async def chat(request: Request, body: ChatRequest):
 
         accumulated = ""
 
-        async for event in emoji_agent.run_stream_events(
-            body.message,
-            deps=deps,
-            message_history=history,
-        ):
-            if isinstance(event, AgentRunResultEvent):
-                conversations[body.session_id] = event.result.all_messages()
-                chunk = json.dumps({"type": "done", "content": accumulated})
-                yield f"data: {chunk}\n\n"
-
-            elif isinstance(event, PartStartEvent):
-                if isinstance(event.part, TextPart) and event.part.content:
-                    accumulated += event.part.content
-                    chunk = json.dumps(
-                        {"type": "text_delta", "content": event.part.content}
-                    )
+        try:
+            async for event in emoji_agent.run_stream_events(
+                body.message,
+                deps=deps,
+                message_history=history,
+            ):
+                if isinstance(event, AgentRunResultEvent):
+                    conversations[body.session_id] = event.result.all_messages()
+                    chunk = json.dumps({"type": "done", "content": accumulated})
                     yield f"data: {chunk}\n\n"
 
-            elif isinstance(event, PartDeltaEvent):
-                if isinstance(event.delta, TextPartDelta) and event.delta.content_delta:
-                    accumulated += event.delta.content_delta
-                    chunk = json.dumps(
-                        {"type": "text_delta", "content": event.delta.content_delta}
-                    )
-                    yield f"data: {chunk}\n\n"
-
-            elif isinstance(event, FunctionToolCallEvent):
-                chunk = json.dumps(
-                    {
-                        "type": "tool_call",
-                        "tool": event.part.tool_name,
-                        "args": event.part.args,
-                    }
-                )
-                yield f"data: {chunk}\n\n"
-
-            elif isinstance(event, FunctionToolResultEvent):
-                chunk = json.dumps({"type": "tool_result", "tool": event.tool_call_id})
-                yield f"data: {chunk}\n\n"
-
-                if (
-                    event.result.tool_name == "make_slack_ready"
-                    and event.result.outcome == "success"
-                ):
-                    image_id = _extract_image_id(event.result.content)
-                    if image_id:
-                        emoji_chunk = json.dumps(
-                            {
-                                "type": "emoji_ready",
-                                "image_id": image_id,
-                                "image_url": f"/api/images/{image_id}",
-                                "download_url": f"/api/download/{image_id}",
-                            }
+                elif isinstance(event, PartStartEvent):
+                    if isinstance(event.part, TextPart) and event.part.content:
+                        accumulated += event.part.content
+                        chunk = json.dumps(
+                            {"type": "text_delta", "content": event.part.content}
                         )
-                        yield f"data: {emoji_chunk}\n\n"
+                        yield f"data: {chunk}\n\n"
+
+                elif isinstance(event, PartDeltaEvent):
+                    if (
+                        isinstance(event.delta, TextPartDelta)
+                        and event.delta.content_delta
+                    ):
+                        accumulated += event.delta.content_delta
+                        chunk = json.dumps(
+                            {"type": "text_delta", "content": event.delta.content_delta}
+                        )
+                        yield f"data: {chunk}\n\n"
+
+                elif isinstance(event, FunctionToolCallEvent):
+                    chunk = json.dumps(
+                        {
+                            "type": "tool_call",
+                            "tool": event.part.tool_name,
+                            "args": event.part.args,
+                        }
+                    )
+                    yield f"data: {chunk}\n\n"
+
+                elif isinstance(event, FunctionToolResultEvent):
+                    chunk = json.dumps(
+                        {"type": "tool_result", "tool": event.tool_call_id}
+                    )
+                    yield f"data: {chunk}\n\n"
+
+                    if (
+                        event.result.tool_name == "make_slack_ready"
+                        and event.result.outcome == "success"
+                    ):
+                        image_id = _extract_image_id(event.result.content)
+                        if image_id:
+                            emoji_chunk = json.dumps(
+                                {
+                                    "type": "emoji_ready",
+                                    "image_id": image_id,
+                                    "image_url": f"/api/images/{image_id}",
+                                    "download_url": f"/api/download/{image_id}",
+                                }
+                            )
+                            yield f"data: {emoji_chunk}\n\n"
+        except Exception:
+            # By now the 200 status and SSE headers are already sent, so raising
+            # would just truncate the stream and the client would see nothing —
+            # emit a typed error chunk instead. Details stay in server logs.
+            logger.exception("Agent run failed mid-stream")
+            chunk = json.dumps(
+                {
+                    "type": "error",
+                    "content": "Something went wrong while generating a response. Please try again.",
+                }
+            )
+            yield f"data: {chunk}\n\n"
 
     return StreamingResponse(
         stream(),
