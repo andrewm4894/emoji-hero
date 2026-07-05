@@ -1,0 +1,51 @@
+# Dedicated OTEL collector that bridges Plano's signal spans to PostHog.
+#
+# Plano emits OTLP/gRPC (no auth headers, gRPC only). PostHog ingests OTLP/HTTP
+# with a Bearer token. This collector receives Plano's gRPC on :4319 and
+# forwards to whatever PostHog is configured via env (POSTHOG_OTEL_ENDPOINT +
+# POSTHOG_API_KEY), plus a debug log so we can watch spans locally.
+#
+# This is intentionally SEPARATE from the posthog-repo otel-collector-local
+# (which is for other local work) so Plano traffic stays isolated.
+#
+# Run (reads both env vars from backend/.env):
+#   docker run -d --name plano-otel-bridge -p 4319:4319 \
+#     --env-file backend/.env \
+#     -v "$PWD/backend/otel-collector-plano.yaml:/etc/otelcol-contrib/config.yaml" \
+#     otel/opentelemetry-collector-contrib:0.142.0 --config=/etc/otelcol-contrib/config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4319
+
+processors:
+  # PostHog's OTEL ingestion only recognizes spans in the gen_ai.* / ai.* /
+  # traceloop.* / pydantic_ai.* namespaces; Plano emits llm.* + signals.*, so its
+  # spans are dropped server-side. Map the llm.* keys onto the gen_ai.* keys
+  # PostHog reads so the spans classify as $ai_generation — signals.* and the
+  # rest then pass through untouched as custom event properties.
+  transform:
+    error_mode: ignore
+    trace_statements:
+      - set(span.attributes["gen_ai.operation.name"], "chat") where span.attributes["llm.model"] != nil
+      - set(span.attributes["gen_ai.request.model"], span.attributes["llm.model"]) where span.attributes["llm.model"] != nil
+      - set(span.attributes["gen_ai.usage.input_tokens"], span.attributes["llm.usage.prompt_tokens"]) where span.attributes["llm.usage.prompt_tokens"] != nil
+      - set(span.attributes["gen_ai.usage.output_tokens"], span.attributes["llm.usage.completion_tokens"]) where span.attributes["llm.usage.completion_tokens"] != nil
+  batch:
+
+exporters:
+  debug:
+    verbosity: detailed
+  otlphttp/posthog:
+    # Exact PostHog OTLP/HTTP traces URL (no /v1/traces auto-suffix).
+    traces_endpoint: ${env:POSTHOG_OTEL_ENDPOINT}
+    headers:
+      Authorization: Bearer ${env:POSTHOG_API_KEY}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [transform, batch]
+      exporters: [debug, otlphttp/posthog]
