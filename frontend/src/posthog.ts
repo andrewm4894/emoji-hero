@@ -26,6 +26,7 @@ export function initPostHog() {
     capture_pageview: true,
     capture_pageleave: true,
     autocapture: true,
+    capture_exceptions: true,
   });
 
   // Identify with our stable user ID so frontend and backend events share the same distinct_id

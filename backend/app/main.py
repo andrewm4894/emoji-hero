@@ -25,7 +25,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.agent import EmojiDeps, emoji_agent
-from app.analytics import setup_otel, shutdown_otel
+from app.analytics import capture_exception, setup_otel, shutdown_otel
 from app.config import settings
 from app.image_processing import get_image_path
 
@@ -161,11 +161,16 @@ async def chat(request: Request, body: ChatRequest):
                                 }
                             )
                             yield f"data: {emoji_chunk}\n\n"
-        except Exception:
+        except Exception as exc:
             # By now the 200 status and SSE headers are already sent, so raising
             # would just truncate the stream and the client would see nothing —
             # emit a typed error chunk instead. Details stay in server logs.
             logger.exception("Agent run failed mid-stream")
+            capture_exception(
+                exc,
+                distinct_id=ph_distinct_id,
+                properties={"$session_id": ph_session_id} if ph_session_id else None,
+            )
             chunk = json.dumps(
                 {
                     "type": "error",

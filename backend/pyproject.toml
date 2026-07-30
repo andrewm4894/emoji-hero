@@ -10,6 +10,7 @@ dependencies = [
     "opentelemetry-exporter-otlp",
     "opentelemetry-sdk",
     "pillow>=12.1.1",
+    "posthog>=7.34.0",
     "pydantic-ai>=1.70.0",
     "pydantic-settings>=2.13.1",
     "python-multipart>=0.0.22",

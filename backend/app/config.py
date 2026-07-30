@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     # OpenRouter
     openrouter_api_key: str = ""
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # PostHog OTEL
     posthog_api_key: str = ""
     posthog_otel_endpoint: str = "https://us.i.posthog.com/i/v0/ai/otel"
+    posthog_host: str = "https://us.i.posthog.com"
 
     # App
     host: str = "0.0.0.0"

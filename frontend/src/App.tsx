@@ -67,12 +67,22 @@ function App() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsStreaming(true);
+    trackEvent("chat_message_sent", {
+      message_length: text.trim().length,
+      conversation_turn: messages.filter((m) => m.role === "user").length + 1,
+    });
 
     // Add empty assistant message for streaming
     setMessages((prev) => [...prev, { role: "assistant", content: "", emojis: [] }]);
 
     try {
       await streamChat(text, sessionId, (chunk: ChatChunk) => {
+        // Track outside the state updater — updaters can re-run under StrictMode
+        if (chunk.type === "emoji_ready" && chunk.image_id) {
+          trackEvent("emoji_ready", { image_id: chunk.image_id });
+        } else if (chunk.type === "error") {
+          trackEvent("chat_error_shown", { source: "stream" });
+        }
         flushSync(() => {
           setMessages((prev) => {
             const updated = prev.slice(0, -1);
@@ -113,6 +123,7 @@ function App() {
         return prev;
       });
       console.error("Chat error:", err);
+      trackEvent("chat_error_shown", { source: "request" });
     } finally {
       setIsStreaming(false);
       inputRef.current?.focus();

@@ -7,12 +7,34 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+from posthog import Posthog
 from pydantic_ai import Agent
 
 from app.config import settings
 
 _provider: TracerProvider | None = None
 _init_lock = threading.Lock()
+
+_posthog: Posthog | None = None
+
+
+def get_posthog() -> Posthog | None:
+    """Lazily create the PostHog client for error tracking + server events."""
+    global _posthog
+    if _posthog is None and settings.posthog_api_key:
+        _posthog = Posthog(settings.posthog_api_key, host=settings.posthog_host)
+    return _posthog
+
+
+def capture_exception(
+    exc: BaseException,
+    distinct_id: str | None = None,
+    properties: dict | None = None,
+) -> None:
+    """Send an exception to PostHog error tracking. No-op if PostHog is not configured."""
+    client = get_posthog()
+    if client:
+        client.capture_exception(exc, distinct_id=distinct_id, properties=properties)
 
 
 def setup_otel(user_id: str | None = None) -> TracerProvider | None:
@@ -67,3 +89,5 @@ def shutdown_otel() -> None:
     """Shutdown the OTEL provider if initialized."""
     if _provider:
         _provider.shutdown()
+    if _posthog:
+        _posthog.shutdown()
