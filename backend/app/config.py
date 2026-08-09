@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_model: str = "openai/gpt-4.1"
 
+    # Plano gateway — when set, LLM calls route through Plano (which proxies to
+    # OpenRouter and computes Signals). Empty = call OpenRouter directly.
+    # e.g. http://localhost:12000/v1
+    plano_gateway_url: str = ""
+
     # Tavily
     tavily_api_key: str = ""
 
