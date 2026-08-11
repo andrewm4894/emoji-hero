@@ -37,15 +37,21 @@ limiter = Limiter(key_func=get_remote_address)
 # Store conversation histories in memory (keyed by session_id)
 conversations: dict[str, list] = {}
 
-# make_slack_ready's output format is defined in agent.py as
-# "Slack-ready! Final image_id: {hex12} ..." — parse that known shape.
-_SLACK_READY_ID_RE = re.compile(r"image_id:\s*([a-f0-9]{12})")
+# Every image-producing tool in agent.py returns a message that embeds the new
+# image_id, e.g. "Downloaded! image_id: {hex12}" or "Slack-ready! Final
+# image_id: {hex12} ..." — parse that known shape to preview each step.
+_IMAGE_ID_RE = re.compile(r"image_id:\s*([a-f0-9]{12})")
+
+# Tools whose successful result saves an image the frontend can preview.
+_IMAGE_PRODUCING_TOOLS = frozenset(
+    {"download_and_save_image", "add_text", "resize_image", "make_slack_ready"}
+)
 
 
 def _extract_image_id(content) -> str | None:
     if not isinstance(content, str):
         return None
-    match = _SLACK_READY_ID_RE.search(content)
+    match = _IMAGE_ID_RE.search(content)
     return match.group(1) if match else None
 
 
@@ -147,7 +153,7 @@ async def chat(request: Request, body: ChatRequest):
                     yield f"data: {chunk}\n\n"
 
                     if (
-                        event.result.tool_name == "make_slack_ready"
+                        event.result.tool_name in _IMAGE_PRODUCING_TOOLS
                         and event.result.outcome == "success"
                     ):
                         image_id = _extract_image_id(event.result.content)
