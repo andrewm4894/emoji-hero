@@ -7,9 +7,23 @@ frontend/dist/
 
 # Gas Town / polecat session scaffolding
 .beads/
-.claude/
+.claude/*
 .runtime/
 CLAUDE.md
+
+# Coherence (https://github.com/daniloc/coherence) — the shared Claude lifecycle control
+# is meant to travel with the repo so every agent session (incl. polecats) journals.
+!.claude/settings.json
+!.claude/coherence-hook
+!.claude/coherence-root
+# backend/.coherence holds both a cache (verify-jobs, test-report, activity traces) and
+# the durable RECORD (decisions, experiments, calibration, status) — keep the record.
+backend/.coherence/*
+!backend/.coherence/decisions/
+!backend/.coherence/status.json
+!backend/.coherence/calibration/
+!backend/.coherence/experiments/
+!backend/.coherence/hooks/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

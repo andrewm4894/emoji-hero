@@ -1,0 +1,18 @@
+{
+  "name": "emoji-hero",
+  "language": "python",
+  "codeExt": ["py"],
+  "entryDir": "app",
+  "sources": ["app"],
+  "testDir": "tests/",
+  "outputDir": "docs/coherence",
+  "typecheck": ["uv", "run", "ruff", "check", "app/"],
+  "test": ["uv", "run", "python", "-m", "pytest", "-k"],
+  "testMatch": "[1-9]\\d* passed",
+  "testBatch": ["uv", "run", "python", "-m", "pytest", "--json-report", "--json-report-file=.coherence/test-report.json"],
+  "testBatchFormat": "pytest-json",
+  "claudeMdPath": "../CLAUDE.md",
+  "claudeProjectRoot": "..",
+  "ignore": ["node_modules", ".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache", "docs"],
+  "mass": { "deps": false }
+}

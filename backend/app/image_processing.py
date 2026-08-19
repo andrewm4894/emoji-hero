@@ -12,6 +12,9 @@ STORAGE.mkdir(parents=True, exist_ok=True)
 
 SLACK_MAX_SIZE = 128 * 1024  # 128KB
 SLACK_DIMENSIONS = (128, 128)
+# Every on-disk format the service will read back by id. The single declarative home:
+# `_find_image` iterates it, and the Slack-boundary oracle parametrizes over it.
+IMAGE_EXTS = ("png", "jpg", "gif")
 
 
 async def download_image(url: str) -> tuple[str, str]:
@@ -163,7 +166,7 @@ def get_image_path(image_id: str) -> str | None:
 
 def _find_image(image_id: str) -> Path | None:
     """Find an image file by ID in storage."""
-    for ext in ("png", "jpg", "gif"):
+    for ext in IMAGE_EXTS:
         path = STORAGE / f"{image_id}.{ext}"
         if path.exists():
             return path

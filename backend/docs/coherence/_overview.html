@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>emoji-hero — overview</title>
+<style>
+  :root { color-scheme: light dark; --line: color-mix(in oklab, currentColor 15%, transparent); --dim: color-mix(in oklab, currentColor 55%, transparent); }
+  body { margin: 0 auto; max-width: 70ch; padding: 1.5rem; font: 15px/1.6 system-ui, sans-serif; }
+  h1 { margin: 0 0 .25rem; } .lede { color: var(--dim); margin: 0 0 1.5rem; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.25rem; margin: 1rem 0; }
+  .card h2 { margin: 0 0 .25rem; font-size: 1.15rem; } .path { font: .8rem ui-monospace, monospace; color: var(--dim); }
+  .intent { margin: .25rem 0 .5rem; } h3 { font-size: .75rem; text-transform: uppercase; color: var(--dim); margin: .75rem 0 .25rem; }
+  ul { margin: 0; padding-left: 1.1rem; } ul.mono li { font: .85rem ui-monospace, monospace; } .dim { color: var(--dim); font-size: .85em; }
+  .why { border-left: 2px solid #c79b2a; padding-left: .6rem; font: 13.5px/1.5 system-ui; color: var(--dim); margin: .35rem 0; }
+  .why .wl { font: 600 .62rem system-ui; text-transform: uppercase; color: #c79b2a; margin-right: .4rem; }
+  table { border-collapse: collapse; } th { text-align: left; padding: .2rem .75rem .2rem 0; color: var(--dim); font-weight: 500; vertical-align: top; }
+  pre { font: .85rem ui-monospace, monospace; background: color-mix(in oklab, currentColor 5%, transparent); padding: 1rem; border-radius: 8px; overflow-x: auto; }
+  footer { color: var(--dim); font-size: .8rem; margin-top: 2rem; }
+</style></head><body>
+  <h1>emoji-hero</h1><p class="lede">FastAPI service that runs a pydantic-ai agent (via OpenRouter) to turn a chat request into a Slack-ready custom emoji, streaming progress back as SSE.</p>
+  <p style="color:var(--dim);font-size:.85rem">2 components · 9 files · 54 symbols</p>
+  <section class="card"><h2>emoji-hero backend <span class="path">.</span></h2>
+      <p class="intent">FastAPI service that runs a pydantic-ai agent (via OpenRouter) to turn a chat request into a Slack-ready custom emoji, streaming progress back as SSE.</p>
+      <div class="why"><span class="wl">why</span> The backend is the only place images are fetched, mutated and served, so the Slack-format invariants are enforced here rather than trusted from the frontend. Conversation history is in-memory by design — this is a dogfooding toy, not a product with durability requirements.</div>
+      <h3>works when</h3><ul class="mono"><li>typechecks</li><li>pyproject.toml exists at root</li><li>coherence.config.json exists at root</li></ul>
+      <h3>files</h3><ul class="mono"><li>conftest.py <span class="dim">tests/conftest.py</span></li><li>test_image_processing.py <span class="dim">tests/test_image_processing.py</span></li></ul>
+    </section><section class="card"><h2>app <span class="path">app</span></h2>
+      <p class="intent">The agent, its tools, and the HTTP surface. Every image passes through `image_processing` and is addressed by an immutable 12-hex id; only `prepare_for_slack` may mint the artifact the user downloads as an emoji.</p>
+      <div class="why"><span class="wl">why</span> Image ids are immutable by convention (each of download / text / crop / slack-ready mints a fresh 12-hex id and never overwrites its source) — that is a tier-3 convention today, anchored only by `test_prepare_for_slack_returns_new_immutable_id`, and a candidate for promotion to a single `_new_id` chokepoint. Slack rejects custom emoji that exceed 128KB or 128px, and a user who downloads a broken emoji gets no error from us — so the limit is enforced in code with a fallback ladder (optimize → quantize → shrink) and tested with incompressible noise, the worst case for PNG.</div>
+      <h3>works when</h3><ul class="mono"><li>boundary &quot;every emoji leaving the service is a PNG no larger than 128x128 and under 128KB&quot; at prepare_for_slack via test &quot;test_slack_boundary_holds_for_every_admitted_format&quot;</li><li>passes test &quot;test_prepare_for_slack_fits_dimensions&quot;</li><li>passes test &quot;test_prepare_for_slack_pads_non_square_to_square&quot;</li><li>passes test &quot;test_prepare_for_slack_returns_new_immutable_id&quot;</li><li>passes test &quot;test_get_image_path_unknown_id_is_none&quot;</li><li>main.py imports app.agent</li><li>agent.py imports app.image_processing</li></ul>
+      <h3>files</h3><ul class="mono"><li>__init__.py <span class="dim">app/__init__.py</span></li><li>agent.py <span class="dim">app/agent.py</span></li><li>analytics.py <span class="dim">app/analytics.py</span></li><li>config.py <span class="dim">app/config.py</span></li><li>image_processing.py <span class="dim">app/image_processing.py</span></li><li>main.py <span class="dim">app/main.py</span></li><li>search.py <span class="dim">app/search.py</span></li></ul>
+    </section>
+  
+  
+  <section class="card"><h2>Structure</h2><pre>emoji-hero/
+├─ app/  ●
+│  ├─ __init__.py
+│  ├─ agent.py
+│  ├─ analytics.py
+│  ├─ config.py
+│  ├─ image_processing.py
+│  ├─ main.py
+│  └─ search.py
+└─ tests/
+   ├─ conftest.py
+   └─ test_image_processing.py</pre><p style="color:var(--dim);font-size:.85rem">● marks a node (a folder with a <code>*.spec.md</code>).</p></section>
+  <footer>Generated at <span id="stamp">2026-08-19 13:22Z</span> — do not edit; run the harness.</footer>
+</body></html>

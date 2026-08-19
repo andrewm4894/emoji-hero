@@ -1,0 +1,14 @@
+{
+  "name": "emoji-hero-backend-coherence",
+  "private": true,
+  "description": "npm shim so the coherence harness (@danilocampos/coherence) can be installed alongside the Python backend. Not part of the runtime.",
+  "scripts": {
+    "coherence:verify": "coherence verify",
+    "coherence:docs": "coherence docs",
+    "coherence:journal": "coherence journal",
+    "coherence:hooks-check": "coherence hooks --check --host claude"
+  },
+  "devDependencies": {
+    "@danilocampos/coherence": "^0.33.0"
+  }
+}

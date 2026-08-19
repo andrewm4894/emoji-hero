@@ -1,0 +1,180 @@
+{
+  "version": 1,
+  "verify": {
+    "at": "2026-08-19T13:24:23.260Z",
+    "commit": "71ea356",
+    "dirty": true,
+    "tier": "full",
+    "scope": null,
+    "batched": true,
+    "cost": {
+      "totalMs": 204.89829100002112,
+      "claims": [
+        {
+          "node": "app",
+          "claim": "boundary \"every emoji leaving the service is a PNG no larger than 128x128 and under 128KB\" at prepare_for_slack via test \"test_slack_boundary_holds_for_every_admitted_format\"",
+          "ms": 163.27554199961014,
+          "source": "report"
+        },
+        {
+          "node": "emoji-hero backend",
+          "claim": "typechecks",
+          "ms": 33.74449999999999,
+          "source": "wall"
+        },
+        {
+          "node": "app",
+          "claim": "passes test \"test_prepare_for_slack_fits_dimensions\"",
+          "ms": 5.264416002319194,
+          "source": "report"
+        },
+        {
+          "node": "app",
+          "claim": "passes test \"test_prepare_for_slack_pads_non_square_to_square\"",
+          "ms": 1.061417002347298,
+          "source": "report"
+        },
+        {
+          "node": "app",
+          "claim": "passes test \"test_prepare_for_slack_returns_new_immutable_id\"",
+          "ms": 0.6043329922249541,
+          "source": "report"
+        }
+      ]
+    },
+    "lastFullAt": "2026-08-19T13:24:23.260Z",
+    "claims": [
+      {
+        "node": "emoji-hero backend",
+        "claim": "typechecks",
+        "kind": "pass",
+        "detail": "",
+        "at": "2026-08-19T13:24:23.260Z",
+        "commit": "71ea356",
+        "tier": "full",
+        "everFailed": false,
+        "runs": 9
+      },
+      {
+        "node": "emoji-hero backend",
+        "claim": "pyproject.toml exists at root",
+        "kind": "pass",
+        "detail": "pyproject.toml @ root",
+        "at": "2026-08-19T13:24:23.260Z",
+        "commit": "71ea356",
+        "tier": "full",
+        "everFailed": false,
+        "runs": 9
+      },
+      {
+        "node": "emoji-hero backend",
+        "claim": "coherence.config.json exists at root",
+        "kind": "pass",
+        "detail": "coherence.config.json @ root",
+        "at": "2026-08-19T13:24:23.260Z",
+        "commit": "71ea356",
+        "tier": "full",
+        "everFailed": false,
+        "runs": 9
+      },
+      {
+        "node": "app",
+        "claim": "boundary \"every emoji leaving the service is a PNG no larger than 128x128 and under 128KB\" at prepare_for_slack via test \"test_slack_boundary_holds_for_every_admitted_format\"",
+        "kind": "pass",
+        "detail": "every emoji leaving the service is a PNG no larger than 128x128 and under 128KB @ prepare_for_slack",
+        "at": "2026-08-19T13:24:23.260Z",
+        "commit": "71ea356",
+        "tier": "full",
+        "everFailed": true,
+        "lastFailAt": "2026-08-19T13:22:02.367Z",
+        "lastFailCommit": "71ea356",
+        "runs": 7
+      },
+      {
+        "node": "app",
+        "claim": "passes test \"test_prepare_for_slack_fits_dimensions\"",
+        "kind": "pass",
+        "at": "2026-08-19T13:24:23.260Z",
+        "commit": "71ea356",
+        "tier": "full",
+        "everFailed": true,
+        "lastFailAt": "2026-08-19T13:22:02.367Z",
+        "lastFailCommit": "71ea356",
+        "runs": 9
+      },
+      {
+        "node": "app",
+        "claim": "passes test \"test_prepare_for_slack_pads_non_square_to_square\"",
+        "kind": "pass",
+        "at": "2026-08-19T13:24:23.260Z",
+        "commit": "71ea356",
+        "tier": "full",
+        "everFailed": true,
+        "lastFailAt": "2026-08-19T13:22:02.367Z",
+        "lastFailCommit": "71ea356",
+        "runs": 9
+      },
+      {
+        "node": "app",
+        "claim": "passes test \"test_prepare_for_slack_returns_new_immutable_id\"",
+        "kind": "pass",
+        "at": "2026-08-19T13:24:23.260Z",
+        "commit": "71ea356",
+        "tier": "full",
+        "everFailed": true,
+        "lastFailAt": "2026-08-19T13:21:22.276Z",
+        "lastFailCommit": "71ea356",
+        "runs": 9
+      },
+      {
+        "node": "app",
+        "claim": "passes test \"test_get_image_path_unknown_id_is_none\"",
+        "kind": "pass",
+        "at": "2026-08-19T13:24:23.260Z",
+        "commit": "71ea356",
+        "tier": "full",
+        "everFailed": true,
+        "lastFailAt": "2026-08-19T13:21:22.276Z",
+        "lastFailCommit": "71ea356",
+        "runs": 9
+      },
+      {
+        "node": "app",
+        "claim": "main.py imports app.agent",
+        "kind": "pass",
+        "detail": "",
+        "at": "2026-08-19T13:24:23.260Z",
+        "commit": "71ea356",
+        "tier": "full",
+        "everFailed": false,
+        "runs": 9
+      },
+      {
+        "node": "app",
+        "claim": "agent.py imports app.image_processing",
+        "kind": "pass",
+        "detail": "",
+        "at": "2026-08-19T13:24:23.260Z",
+        "commit": "71ea356",
+        "tier": "full",
+        "everFailed": false,
+        "runs": 9
+      }
+    ],
+    "coverage": {
+      "components": 2,
+      "claimed": 2,
+      "withWhy": 2,
+      "symbols": 54,
+      "documented": 22
+    },
+    "invariants": {
+      "total": 1,
+      "anchored": 1,
+      "gaps": []
+    },
+    "narrative": null,
+    "jobs": 32,
+    "failures": 0
+  }
+}

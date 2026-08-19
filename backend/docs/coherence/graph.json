@@ -1,0 +1,1192 @@
+{
+  "generatedAt": "2026-08-19 13:22Z",
+  "root": "emoji-hero",
+  "absRoot": "/Users/andrewmaguire/Documents/GitHub/emoji-hero/backend",
+  "nodes": [
+    {
+      "id": "c:.",
+      "label": "emoji-hero backend",
+      "kind": "component",
+      "sub": "FastAPI service that runs a pydantic-ai agent (via OpenRouter) to turn a chat request into a Slack-ready custom emoji, streaming progress back as SSE.",
+      "claimed": true,
+      "claims": [
+        "typechecks",
+        "pyproject.toml exists at root",
+        "coherence.config.json exists at root"
+      ],
+      "why": "The backend is the only place images are fetched, mutated and served, so the Slack-format invariants are enforced here rather than trusted from the frontend. Conversation history is in-memory by design — this is a dogfooding toy, not a product with durability requirements."
+    },
+    {
+      "id": "c:app",
+      "label": "app",
+      "kind": "component",
+      "sub": "The agent, its tools, and the HTTP surface. Every image passes through `image_processing` and is addressed by an immutable 12-hex id; only `prepare_for_slack` may mint the artifact the user downloads as an emoji.",
+      "claimed": true,
+      "claims": [
+        "boundary \"every emoji leaving the service is a PNG no larger than 128x128 and under 128KB\" at prepare_for_slack via test \"test_slack_boundary_holds_for_every_admitted_format\"",
+        "passes test \"test_prepare_for_slack_fits_dimensions\"",
+        "passes test \"test_prepare_for_slack_pads_non_square_to_square\"",
+        "passes test \"test_prepare_for_slack_returns_new_immutable_id\"",
+        "passes test \"test_get_image_path_unknown_id_is_none\"",
+        "main.py imports app.agent",
+        "agent.py imports app.image_processing"
+      ],
+      "why": "Image ids are immutable by convention (each of download / text / crop / slack-ready mints a fresh 12-hex id and never overwrites its source) — that is a tier-3 convention today, anchored only by `test_prepare_for_slack_returns_new_immutable_id`, and a candidate for promotion to a single `_new_id` chokepoint.\n\nSlack rejects custom emoji that exceed 128KB or 128px, and a user who downloads a broken emoji gets no error from us — so the limit is enforced in code with a fallback ladder (optimize → quantize → shrink) and tested with incompressible noise, the worst case for PNG.",
+      "invariants": [
+        "every emoji leaving the service is a PNG no larger than 128x128 and under 128KB"
+      ],
+      "refutations": [
+        "every emoji leaving the service is a PNG no larger than 128x128 and under 128KB: removed the thumbnail AND the canvas-paste in prepare_for_slack -> RED, boundary + 2 passes-test claims failed by name (png/jpg/gif all). Note: removing only one of the two stays green — they independently cap dimensions — and disabling the quantize/shrink fallback ladder also stays green (see conjecture in the journal)."
+      ]
+    },
+    {
+      "id": "f:app/__init__.py",
+      "parent": "c:app",
+      "label": "__init__.py",
+      "kind": "file",
+      "sub": "app/__init__.py",
+      "path": "app/__init__.py"
+    },
+    {
+      "id": "f:app/agent.py",
+      "parent": "c:app",
+      "label": "agent.py",
+      "kind": "file",
+      "sub": "app/agent.py",
+      "path": "app/agent.py"
+    },
+    {
+      "id": "s:app/agent.py#EmojiDeps",
+      "parent": "f:app/agent.py",
+      "label": "EmojiDeps",
+      "kind": "symbol",
+      "sub": "class",
+      "path": "app/agent.py",
+      "line": 17,
+      "prose": "Dependencies injected into the agent at runtime."
+    },
+    {
+      "id": "s:app/agent.py#SYSTEM_PROMPT",
+      "parent": "f:app/agent.py",
+      "label": "SYSTEM_PROMPT",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/agent.py",
+      "line": 23
+    },
+    {
+      "id": "s:app/agent.py#openai_client",
+      "parent": "f:app/agent.py",
+      "label": "openai_client",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/agent.py",
+      "line": 48
+    },
+    {
+      "id": "s:app/agent.py#model",
+      "parent": "f:app/agent.py",
+      "label": "model",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/agent.py",
+      "line": 53
+    },
+    {
+      "id": "s:app/agent.py#emoji_agent",
+      "parent": "f:app/agent.py",
+      "label": "emoji_agent",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/agent.py",
+      "line": 58
+    },
+    {
+      "id": "s:app/agent.py#search_for_images",
+      "parent": "f:app/agent.py",
+      "label": "search_for_images",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/agent.py",
+      "line": 66,
+      "prose": "Search the web for images matching the query. Use this to find memes, \\\n    reaction images, or any visual content the user is looking for."
+    },
+    {
+      "id": "s:app/agent.py#download_and_save_image",
+      "parent": "f:app/agent.py",
+      "label": "download_and_save_image",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/agent.py",
+      "line": 83,
+      "prose": "Download an image from a URL and save it for processing. \\\n    Returns the image_id to use with other tools."
+    },
+    {
+      "id": "s:app/agent.py#add_text",
+      "parent": "f:app/agent.py",
+      "label": "add_text",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/agent.py",
+      "line": 94
+    },
+    {
+      "id": "s:app/agent.py#resize_image",
+      "parent": "f:app/agent.py",
+      "label": "resize_image",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/agent.py",
+      "line": 114
+    },
+    {
+      "id": "s:app/agent.py#make_slack_ready",
+      "parent": "f:app/agent.py",
+      "label": "make_slack_ready",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/agent.py",
+      "line": 129,
+      "prose": "Prepare an image for Slack: optimizes to 128x128 PNG under 128KB. \\\n    This is the final step before download. Returns the final image_id."
+    },
+    {
+      "id": "x:openai",
+      "label": "openai",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:pydantic",
+      "label": "pydantic",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:pydantic_ai",
+      "label": "pydantic_ai",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:pydantic_ai.models.openai",
+      "label": "pydantic_ai.models.openai",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:pydantic_ai.providers.openai",
+      "label": "pydantic_ai.providers.openai",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:app.config",
+      "label": "app.config",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:app.image_processing",
+      "label": "app.image_processing",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:app.search",
+      "label": "app.search",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "f:app/analytics.py",
+      "parent": "c:app",
+      "label": "analytics.py",
+      "kind": "file",
+      "sub": "app/analytics.py",
+      "path": "app/analytics.py"
+    },
+    {
+      "id": "s:app/analytics.py#_provider",
+      "parent": "f:app/analytics.py",
+      "label": "_provider",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/analytics.py",
+      "line": 15
+    },
+    {
+      "id": "s:app/analytics.py#_init_lock",
+      "parent": "f:app/analytics.py",
+      "label": "_init_lock",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/analytics.py",
+      "line": 16
+    },
+    {
+      "id": "s:app/analytics.py#_posthog",
+      "parent": "f:app/analytics.py",
+      "label": "_posthog",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/analytics.py",
+      "line": 18
+    },
+    {
+      "id": "s:app/analytics.py#get_posthog",
+      "parent": "f:app/analytics.py",
+      "label": "get_posthog",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/analytics.py",
+      "line": 21,
+      "prose": "Lazily create the PostHog client for error tracking + server events."
+    },
+    {
+      "id": "s:app/analytics.py#capture_exception",
+      "parent": "f:app/analytics.py",
+      "label": "capture_exception",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/analytics.py",
+      "line": 29
+    },
+    {
+      "id": "s:app/analytics.py#setup_otel",
+      "parent": "f:app/analytics.py",
+      "label": "setup_otel",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/analytics.py",
+      "line": 40,
+      "prose": "Configure OpenTelemetry to send traces to PostHog's OTEL endpoint.\n\n    Called lazily on first request so we can set user.id from the frontend's\n    distinct_id header. PostHog extracts distinct_id from the OTEL resource\n    attribute ``user.id`` (see posthog/rust/capture/src/otel/identity.rs)."
+    },
+    {
+      "id": "s:app/analytics.py#shutdown_otel",
+      "parent": "f:app/analytics.py",
+      "label": "shutdown_otel",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/analytics.py",
+      "line": 88,
+      "prose": "Shutdown the OTEL provider if initialized."
+    },
+    {
+      "id": "x:os",
+      "label": "os",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:threading",
+      "label": "threading",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:opentelemetry",
+      "label": "opentelemetry",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:opentelemetry.exporter.otlp.proto.http.trace_exporter",
+      "label": "opentelemetry.exporter.otlp.proto.http.trace_exporter",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:opentelemetry.sdk.resources",
+      "label": "opentelemetry.sdk.resources",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:opentelemetry.sdk.trace",
+      "label": "opentelemetry.sdk.trace",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:opentelemetry.sdk.trace.export",
+      "label": "opentelemetry.sdk.trace.export",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:posthog",
+      "label": "posthog",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "f:app/config.py",
+      "parent": "c:app",
+      "label": "config.py",
+      "kind": "file",
+      "sub": "app/config.py",
+      "path": "app/config.py"
+    },
+    {
+      "id": "s:app/config.py#Settings",
+      "parent": "f:app/config.py",
+      "label": "Settings",
+      "kind": "symbol",
+      "sub": "class",
+      "path": "app/config.py",
+      "line": 4
+    },
+    {
+      "id": "s:app/config.py#settings",
+      "parent": "f:app/config.py",
+      "label": "settings",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/config.py",
+      "line": 30
+    },
+    {
+      "id": "x:pydantic_settings",
+      "label": "pydantic_settings",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "f:app/image_processing.py",
+      "parent": "c:app",
+      "label": "image_processing.py",
+      "kind": "file",
+      "sub": "app/image_processing.py",
+      "path": "app/image_processing.py"
+    },
+    {
+      "id": "s:app/image_processing.py#STORAGE",
+      "parent": "f:app/image_processing.py",
+      "label": "STORAGE",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/image_processing.py",
+      "line": 10
+    },
+    {
+      "id": "s:app/image_processing.py#SLACK_MAX_SIZE",
+      "parent": "f:app/image_processing.py",
+      "label": "SLACK_MAX_SIZE",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/image_processing.py",
+      "line": 13
+    },
+    {
+      "id": "s:app/image_processing.py#SLACK_DIMENSIONS",
+      "parent": "f:app/image_processing.py",
+      "label": "SLACK_DIMENSIONS",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/image_processing.py",
+      "line": 14
+    },
+    {
+      "id": "s:app/image_processing.py#IMAGE_EXTS",
+      "parent": "f:app/image_processing.py",
+      "label": "IMAGE_EXTS",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/image_processing.py",
+      "line": 17,
+      "prose": "Every on-disk format the service will read back by id. The single declarative home:\n`_find_image` iterates it, and the Slack-boundary oracle parametrizes over it."
+    },
+    {
+      "id": "s:app/image_processing.py#download_image",
+      "parent": "f:app/image_processing.py",
+      "label": "download_image",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/image_processing.py",
+      "line": 20,
+      "prose": "Download an image from URL, save to storage, return (image_id, file_path)."
+    },
+    {
+      "id": "s:app/image_processing.py#add_text_to_image",
+      "parent": "f:app/image_processing.py",
+      "label": "add_text_to_image",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/image_processing.py",
+      "line": 40
+    },
+    {
+      "id": "s:app/image_processing.py#crop_and_resize",
+      "parent": "f:app/image_processing.py",
+      "label": "crop_and_resize",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/image_processing.py",
+      "line": 96
+    },
+    {
+      "id": "s:app/image_processing.py#prepare_for_slack",
+      "parent": "f:app/image_processing.py",
+      "label": "prepare_for_slack",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/image_processing.py",
+      "line": 124,
+      "prose": "Optimize image for Slack: 128x128 PNG, under 128KB. Returns new image_id."
+    },
+    {
+      "id": "s:app/image_processing.py#get_image_path",
+      "parent": "f:app/image_processing.py",
+      "label": "get_image_path",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/image_processing.py",
+      "line": 161,
+      "prose": "Get the file path for an image by ID, or None if not found."
+    },
+    {
+      "id": "s:app/image_processing.py#_find_image",
+      "parent": "f:app/image_processing.py",
+      "label": "_find_image",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/image_processing.py",
+      "line": 167,
+      "prose": "Find an image file by ID in storage."
+    },
+    {
+      "id": "x:io",
+      "label": "io",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:uuid",
+      "label": "uuid",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:pathlib",
+      "label": "pathlib",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:httpx",
+      "label": "httpx",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:PIL",
+      "label": "PIL",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "f:app/main.py",
+      "parent": "c:app",
+      "label": "main.py",
+      "kind": "file",
+      "sub": "app/main.py",
+      "path": "app/main.py"
+    },
+    {
+      "id": "s:app/main.py#logger",
+      "parent": "f:app/main.py",
+      "label": "logger",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/main.py",
+      "line": 32
+    },
+    {
+      "id": "s:app/main.py#limiter",
+      "parent": "f:app/main.py",
+      "label": "limiter",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/main.py",
+      "line": 35,
+      "prose": "Rate limiter"
+    },
+    {
+      "id": "s:app/main.py#conversations",
+      "parent": "f:app/main.py",
+      "label": "conversations",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/main.py",
+      "line": 38,
+      "prose": "Store conversation histories in memory (keyed by session_id)"
+    },
+    {
+      "id": "s:app/main.py#_SLACK_READY_ID_RE",
+      "parent": "f:app/main.py",
+      "label": "_SLACK_READY_ID_RE",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/main.py",
+      "line": 42,
+      "prose": "make_slack_ready's output format is defined in agent.py as\n\"Slack-ready! Final image_id: {hex12} ...\" — parse that known shape."
+    },
+    {
+      "id": "s:app/main.py#_extract_image_id",
+      "parent": "f:app/main.py",
+      "label": "_extract_image_id",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/main.py",
+      "line": 45
+    },
+    {
+      "id": "s:app/main.py#lifespan",
+      "parent": "f:app/main.py",
+      "label": "lifespan",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/main.py",
+      "line": 53
+    },
+    {
+      "id": "s:app/main.py#app",
+      "parent": "f:app/main.py",
+      "label": "app",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/main.py",
+      "line": 59
+    },
+    {
+      "id": "s:app/main.py#ChatRequest",
+      "parent": "f:app/main.py",
+      "label": "ChatRequest",
+      "kind": "symbol",
+      "sub": "class",
+      "path": "app/main.py",
+      "line": 72
+    },
+    {
+      "id": "s:app/main.py#chat",
+      "parent": "f:app/main.py",
+      "label": "chat",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/main.py",
+      "line": 79,
+      "prose": "Chat with the emoji agent. Streams all events as SSE."
+    },
+    {
+      "id": "s:app/main.py#stream()",
+      "parent": "f:app/main.py",
+      "label": "stream()",
+      "kind": "symbol",
+      "sub": "method",
+      "path": "app/main.py",
+      "line": 93
+    },
+    {
+      "id": "s:app/main.py#get_image",
+      "parent": "f:app/main.py",
+      "label": "get_image",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/main.py",
+      "line": 190,
+      "prose": "Get a processed image by ID."
+    },
+    {
+      "id": "s:app/main.py#download_image",
+      "parent": "f:app/main.py",
+      "label": "download_image",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/main.py",
+      "line": 200,
+      "prose": "Download a Slack-ready emoji image."
+    },
+    {
+      "id": "s:app/main.py#health",
+      "parent": "f:app/main.py",
+      "label": "health",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/main.py",
+      "line": 214
+    },
+    {
+      "id": "s:app/main.py#FRONTEND_DIR",
+      "parent": "f:app/main.py",
+      "label": "FRONTEND_DIR",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "app/main.py",
+      "line": 219,
+      "prose": "Serve frontend static files (built React app)"
+    },
+    {
+      "id": "x:json",
+      "label": "json",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:logging",
+      "label": "logging",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:re",
+      "label": "re",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:contextlib",
+      "label": "contextlib",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:fastapi",
+      "label": "fastapi",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:fastapi.middleware.cors",
+      "label": "fastapi.middleware.cors",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:fastapi.responses",
+      "label": "fastapi.responses",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:fastapi.staticfiles",
+      "label": "fastapi.staticfiles",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:pydantic_ai.messages",
+      "label": "pydantic_ai.messages",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:slowapi",
+      "label": "slowapi",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:slowapi.util",
+      "label": "slowapi.util",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:app.agent",
+      "label": "app.agent",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:app.analytics",
+      "label": "app.analytics",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "f:app/search.py",
+      "parent": "c:app",
+      "label": "search.py",
+      "kind": "file",
+      "sub": "app/search.py",
+      "path": "app/search.py"
+    },
+    {
+      "id": "s:app/search.py#get_tavily_client",
+      "parent": "f:app/search.py",
+      "label": "get_tavily_client",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/search.py",
+      "line": 6
+    },
+    {
+      "id": "s:app/search.py#search_images",
+      "parent": "f:app/search.py",
+      "label": "search_images",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "app/search.py",
+      "line": 10,
+      "prose": "Search for images using Tavily. Returns list of {url, description}."
+    },
+    {
+      "id": "x:tavily",
+      "label": "tavily",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "f:tests/conftest.py",
+      "parent": "c:.",
+      "label": "conftest.py",
+      "kind": "file",
+      "sub": "tests/conftest.py",
+      "path": "tests/conftest.py",
+      "prose": "Test bootstrap: point image storage at a throwaway dir BEFORE app modules import.\n\n`app.image_processing` resolves `STORAGE` from settings at import time, so the env var\nhas to be set before any test module imports it."
+    },
+    {
+      "id": "x:tempfile",
+      "label": "tempfile",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "f:tests/test_image_processing.py",
+      "parent": "c:.",
+      "label": "test_image_processing.py",
+      "kind": "file",
+      "sub": "tests/test_image_processing.py",
+      "path": "tests/test_image_processing.py",
+      "prose": "Oracles for the Slack-optimization boundary in app/image_processing.py.\n\nEvery emoji that leaves `prepare_for_slack` must satisfy Slack's custom-emoji limits:\nPNG, no side larger than 128px, file under 128KB. The boundary oracle iterates the\nlive domain `IMAGE_EXTS` — every on-disk format the service admits — with an\nincompressible source, the worst case for PNG."
+    },
+    {
+      "id": "s:tests/test_image_processing.py#_PIL_FORMAT",
+      "parent": "f:tests/test_image_processing.py",
+      "label": "_PIL_FORMAT",
+      "kind": "symbol",
+      "sub": "const",
+      "path": "tests/test_image_processing.py",
+      "line": 18
+    },
+    {
+      "id": "s:tests/test_image_processing.py#_store_image",
+      "parent": "f:tests/test_image_processing.py",
+      "label": "_store_image",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "tests/test_image_processing.py",
+      "line": 21
+    },
+    {
+      "id": "s:tests/test_image_processing.py#_noisy_image",
+      "parent": "f:tests/test_image_processing.py",
+      "label": "_noisy_image",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "tests/test_image_processing.py",
+      "line": 30,
+      "prose": "Incompressible RGBA noise — forces the quantize / shrink fallbacks to engage."
+    },
+    {
+      "id": "s:tests/test_image_processing.py#_assert_slack_ready",
+      "parent": "f:tests/test_image_processing.py",
+      "label": "_assert_slack_ready",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "tests/test_image_processing.py",
+      "line": 35
+    },
+    {
+      "id": "s:tests/test_image_processing.py#test_slack_boundary_holds_for_every_admitted_format",
+      "parent": "f:tests/test_image_processing.py",
+      "label": "test_slack_boundary_holds_for_every_admitted_format",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "tests/test_image_processing.py",
+      "line": 46,
+      "prose": "Totality oracle: for EVERY format `_find_image` admits, the artifact fits Slack."
+    },
+    {
+      "id": "s:tests/test_image_processing.py#test_prepare_for_slack_fits_dimensions",
+      "parent": "f:tests/test_image_processing.py",
+      "label": "test_prepare_for_slack_fits_dimensions",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "tests/test_image_processing.py",
+      "line": 54
+    },
+    {
+      "id": "s:tests/test_image_processing.py#test_prepare_for_slack_pads_non_square_to_square",
+      "parent": "f:tests/test_image_processing.py",
+      "label": "test_prepare_for_slack_pads_non_square_to_square",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "tests/test_image_processing.py",
+      "line": 62
+    },
+    {
+      "id": "s:tests/test_image_processing.py#test_prepare_for_slack_returns_new_immutable_id",
+      "parent": "f:tests/test_image_processing.py",
+      "label": "test_prepare_for_slack_returns_new_immutable_id",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "tests/test_image_processing.py",
+      "line": 68
+    },
+    {
+      "id": "s:tests/test_image_processing.py#test_get_image_path_unknown_id_is_none",
+      "parent": "f:tests/test_image_processing.py",
+      "label": "test_get_image_path_unknown_id_is_none",
+      "kind": "symbol",
+      "sub": "function",
+      "path": "tests/test_image_processing.py",
+      "line": 77
+    },
+    {
+      "id": "x:pytest",
+      "label": "pytest",
+      "kind": "external",
+      "sub": "module"
+    },
+    {
+      "id": "x:app",
+      "label": "app",
+      "kind": "external",
+      "sub": "module"
+    }
+  ],
+  "edges": [
+    {
+      "id": "f:app/agent.py->x:openai:imports",
+      "source": "f:app/agent.py",
+      "target": "x:openai",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/agent.py->x:pydantic:imports",
+      "source": "f:app/agent.py",
+      "target": "x:pydantic",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/agent.py->x:pydantic_ai:imports",
+      "source": "f:app/agent.py",
+      "target": "x:pydantic_ai",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/agent.py->x:pydantic_ai.models.openai:imports",
+      "source": "f:app/agent.py",
+      "target": "x:pydantic_ai.models.openai",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/agent.py->x:pydantic_ai.providers.openai:imports",
+      "source": "f:app/agent.py",
+      "target": "x:pydantic_ai.providers.openai",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/agent.py->x:app.config:imports",
+      "source": "f:app/agent.py",
+      "target": "x:app.config",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/agent.py->x:app.image_processing:imports",
+      "source": "f:app/agent.py",
+      "target": "x:app.image_processing",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/agent.py->x:app.search:imports",
+      "source": "f:app/agent.py",
+      "target": "x:app.search",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/analytics.py->x:os:imports",
+      "source": "f:app/analytics.py",
+      "target": "x:os",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/analytics.py->x:threading:imports",
+      "source": "f:app/analytics.py",
+      "target": "x:threading",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/analytics.py->x:opentelemetry:imports",
+      "source": "f:app/analytics.py",
+      "target": "x:opentelemetry",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/analytics.py->x:opentelemetry.exporter.otlp.proto.http.trace_exporter:imports",
+      "source": "f:app/analytics.py",
+      "target": "x:opentelemetry.exporter.otlp.proto.http.trace_exporter",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/analytics.py->x:opentelemetry.sdk.resources:imports",
+      "source": "f:app/analytics.py",
+      "target": "x:opentelemetry.sdk.resources",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/analytics.py->x:opentelemetry.sdk.trace:imports",
+      "source": "f:app/analytics.py",
+      "target": "x:opentelemetry.sdk.trace",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/analytics.py->x:opentelemetry.sdk.trace.export:imports",
+      "source": "f:app/analytics.py",
+      "target": "x:opentelemetry.sdk.trace.export",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/analytics.py->x:posthog:imports",
+      "source": "f:app/analytics.py",
+      "target": "x:posthog",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/analytics.py->x:pydantic_ai:imports",
+      "source": "f:app/analytics.py",
+      "target": "x:pydantic_ai",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/analytics.py->x:app.config:imports",
+      "source": "f:app/analytics.py",
+      "target": "x:app.config",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/config.py->x:pydantic_settings:imports",
+      "source": "f:app/config.py",
+      "target": "x:pydantic_settings",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/image_processing.py->x:io:imports",
+      "source": "f:app/image_processing.py",
+      "target": "x:io",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/image_processing.py->x:uuid:imports",
+      "source": "f:app/image_processing.py",
+      "target": "x:uuid",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/image_processing.py->x:pathlib:imports",
+      "source": "f:app/image_processing.py",
+      "target": "x:pathlib",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/image_processing.py->x:httpx:imports",
+      "source": "f:app/image_processing.py",
+      "target": "x:httpx",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/image_processing.py->x:PIL:imports",
+      "source": "f:app/image_processing.py",
+      "target": "x:PIL",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/image_processing.py->x:app.config:imports",
+      "source": "f:app/image_processing.py",
+      "target": "x:app.config",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:json:imports",
+      "source": "f:app/main.py",
+      "target": "x:json",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:logging:imports",
+      "source": "f:app/main.py",
+      "target": "x:logging",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:os:imports",
+      "source": "f:app/main.py",
+      "target": "x:os",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:re:imports",
+      "source": "f:app/main.py",
+      "target": "x:re",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:contextlib:imports",
+      "source": "f:app/main.py",
+      "target": "x:contextlib",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:pathlib:imports",
+      "source": "f:app/main.py",
+      "target": "x:pathlib",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:opentelemetry:imports",
+      "source": "f:app/main.py",
+      "target": "x:opentelemetry",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:fastapi:imports",
+      "source": "f:app/main.py",
+      "target": "x:fastapi",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:fastapi.middleware.cors:imports",
+      "source": "f:app/main.py",
+      "target": "x:fastapi.middleware.cors",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:fastapi.responses:imports",
+      "source": "f:app/main.py",
+      "target": "x:fastapi.responses",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:fastapi.staticfiles:imports",
+      "source": "f:app/main.py",
+      "target": "x:fastapi.staticfiles",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:pydantic:imports",
+      "source": "f:app/main.py",
+      "target": "x:pydantic",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:pydantic_ai:imports",
+      "source": "f:app/main.py",
+      "target": "x:pydantic_ai",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:pydantic_ai.messages:imports",
+      "source": "f:app/main.py",
+      "target": "x:pydantic_ai.messages",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:slowapi:imports",
+      "source": "f:app/main.py",
+      "target": "x:slowapi",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:slowapi.util:imports",
+      "source": "f:app/main.py",
+      "target": "x:slowapi.util",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:app.agent:imports",
+      "source": "f:app/main.py",
+      "target": "x:app.agent",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:app.analytics:imports",
+      "source": "f:app/main.py",
+      "target": "x:app.analytics",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:app.config:imports",
+      "source": "f:app/main.py",
+      "target": "x:app.config",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/main.py->x:app.image_processing:imports",
+      "source": "f:app/main.py",
+      "target": "x:app.image_processing",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/search.py->x:tavily:imports",
+      "source": "f:app/search.py",
+      "target": "x:tavily",
+      "kind": "imports"
+    },
+    {
+      "id": "f:app/search.py->x:app.config:imports",
+      "source": "f:app/search.py",
+      "target": "x:app.config",
+      "kind": "imports"
+    },
+    {
+      "id": "f:tests/conftest.py->x:os:imports",
+      "source": "f:tests/conftest.py",
+      "target": "x:os",
+      "kind": "imports"
+    },
+    {
+      "id": "f:tests/conftest.py->x:tempfile:imports",
+      "source": "f:tests/conftest.py",
+      "target": "x:tempfile",
+      "kind": "imports"
+    },
+    {
+      "id": "f:tests/test_image_processing.py->x:os:imports",
+      "source": "f:tests/test_image_processing.py",
+      "target": "x:os",
+      "kind": "imports"
+    },
+    {
+      "id": "f:tests/test_image_processing.py->x:uuid:imports",
+      "source": "f:tests/test_image_processing.py",
+      "target": "x:uuid",
+      "kind": "imports"
+    },
+    {
+      "id": "f:tests/test_image_processing.py->x:pytest:imports",
+      "source": "f:tests/test_image_processing.py",
+      "target": "x:pytest",
+      "kind": "imports"
+    },
+    {
+      "id": "f:tests/test_image_processing.py->x:PIL:imports",
+      "source": "f:tests/test_image_processing.py",
+      "target": "x:PIL",
+      "kind": "imports"
+    },
+    {
+      "id": "f:tests/test_image_processing.py->x:app:imports",
+      "source": "f:tests/test_image_processing.py",
+      "target": "x:app",
+      "kind": "imports"
+    },
+    {
+      "id": "f:tests/test_image_processing.py->x:app.image_processing:imports",
+      "source": "f:tests/test_image_processing.py",
+      "target": "x:app.image_processing",
+      "kind": "imports"
+    }
+  ],
+  "bindings": null
+}
