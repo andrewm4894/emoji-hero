@@ -270,22 +270,55 @@ function App() {
   );
 }
 
-const MD_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g;
+type MessagePart = { type: "text" | "image"; text?: string; alt?: string; url?: string };
 
-function MessageContent({ content }: { content: string }) {
-  // Split content into text and markdown images
-  const parts: { type: "text" | "image"; text?: string; alt?: string; url?: string }[] = [];
-  let lastIndex = 0;
+// Split content into text and markdown images (![alt](url)). The URL scanner
+// balances parentheses, so a CDN path that embeds filter calls such as
+// no_upscale() or max_bytes(1500000) stays whole instead of splitting at the
+// first ")".
+function parseMessageParts(content: string): MessagePart[] {
+  const parts: MessagePart[] = [];
+  let textStart = 0;
+  let cursor = 0;
 
-  for (const match of content.matchAll(MD_IMAGE_REGEX)) {
-    const before = content.slice(lastIndex, match.index);
-    if (before) parts.push({ type: "text", text: before });
-    parts.push({ type: "image", alt: match[1], url: match[2] });
-    lastIndex = match.index! + match[0].length;
+  while (cursor < content.length) {
+    if (content[cursor] === "!" && content[cursor + 1] === "[") {
+      const altEnd = content.indexOf("]", cursor + 2);
+      if (altEnd !== -1 && content[altEnd + 1] === "(") {
+        const urlStart = altEnd + 2;
+        let depth = 1;
+        let i = urlStart;
+        for (; i < content.length && depth > 0; i++) {
+          if (content[i] === "(") depth++;
+          else if (content[i] === ")") depth--;
+        }
+        if (depth === 0) {
+          const urlEnd = i - 1;
+          if (textStart < cursor) {
+            parts.push({ type: "text", text: content.slice(textStart, cursor) });
+          }
+          parts.push({
+            type: "image",
+            alt: content.slice(cursor + 2, altEnd),
+            url: content.slice(urlStart, urlEnd),
+          });
+          cursor = i;
+          textStart = cursor;
+          continue;
+        }
+      }
+    }
+    cursor++;
   }
 
-  const remaining = content.slice(lastIndex);
-  if (remaining) parts.push({ type: "text", text: remaining });
+  if (textStart < content.length) {
+    parts.push({ type: "text", text: content.slice(textStart) });
+  }
+  return parts;
+}
+
+function MessageContent({ content }: { content: string }) {
+  const parts = parseMessageParts(content);
 
   // If no images found, just render as text
   if (!parts.some((p) => p.type === "image")) {
@@ -298,18 +331,42 @@ function MessageContent({ content }: { content: string }) {
         part.type === "text" ? (
           <span key={i}>{part.text}</span>
         ) : (
-          <div key={i} className="search-result-image">
-            <img
-              src={part.url}
-              alt={part.alt || "search result"}
-              loading="lazy"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          </div>
+          <SearchResultImage key={i} alt={part.alt} url={part.url} />
         )
       )}
+    </div>
+  );
+}
+
+function trackImageLoadFailed(source: "search_result" | "emoji_preview") {
+  trackEvent("image_load_failed", { source });
+}
+
+function SearchResultImage({ alt, url }: { alt?: string; url?: string }) {
+  const [failed, setFailed] = useState(false);
+  const label = alt?.trim() || "search result";
+
+  // Show a labeled placeholder rather than hiding a broken image — a silent
+  // gap reads as a corrupt gallery and never reaches analytics.
+  if (failed) {
+    return (
+      <div className="search-result-image search-result-image--failed" title={label}>
+        <span>{label}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="search-result-image">
+      <img
+        src={url}
+        alt={label}
+        loading="lazy"
+        onError={() => {
+          setFailed(true);
+          trackImageLoadFailed("search_result");
+        }}
+      />
     </div>
   );
 }
@@ -338,9 +395,7 @@ function EmojiPreviews({ emojis }: { emojis: EmojiReady[] }) {
           <img
             src={emoji.image_url}
             alt={`emoji ${emoji.image_id}`}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
+            onError={() => trackImageLoadFailed("emoji_preview")}
           />
           <a
             className="download-btn"
