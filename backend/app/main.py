@@ -20,6 +20,7 @@ from pydantic_ai import (
     PartStartEvent,
     TextPartDelta,
 )
+from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import TextPart
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -165,18 +166,35 @@ async def chat(request: Request, body: ChatRequest):
             # By now the 200 status and SSE headers are already sent, so raising
             # would just truncate the stream and the client would see nothing —
             # emit a typed error chunk instead. Details stay in server logs.
-            logger.exception("Agent run failed mid-stream")
-            capture_exception(
-                exc,
-                distinct_id=ph_distinct_id,
-                properties={"$session_id": ph_session_id} if ph_session_id else None,
-            )
-            chunk = json.dumps(
-                {
-                    "type": "error",
-                    "content": "Something went wrong while generating a response. Please try again.",
-                }
-            )
+            if isinstance(exc, ModelHTTPError) and exc.status_code in (401, 403):
+                # The provider rejected our credential. This is a configuration
+                # failure, not a transient one: retrying cannot succeed until an
+                # operator rotates the key. Tell the user that plainly and log
+                # it, but do not mint a fresh error tracking issue per request.
+                logger.error(
+                    "Model provider rejected credential (HTTP %s)", exc.status_code
+                )
+                content = (
+                    "The AI provider rejected our credential. An operator needs "
+                    "to rotate the API key before chat works again — retrying "
+                    "will not help until then."
+                )
+            else:
+                # A genuinely transient mid-stream failure — capture it so it is
+                # tracked, and let the user retry.
+                logger.exception("Agent run failed mid-stream")
+                capture_exception(
+                    exc,
+                    distinct_id=ph_distinct_id,
+                    properties={"$session_id": ph_session_id}
+                    if ph_session_id
+                    else None,
+                )
+                content = (
+                    "Something went wrong while generating a response. "
+                    "Please try again."
+                )
+            chunk = json.dumps({"type": "error", "content": content})
             yield f"data: {chunk}\n\n"
 
     return StreamingResponse(
