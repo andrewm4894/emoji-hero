@@ -11,15 +11,15 @@ interface Message {
 }
 
 const SUGGESTIONS = [
-  "Find me a 'this is fine' meme",
-  "I need a thumbs up parrot emoji",
-  "Get me a 'LGTM' reaction image",
-  "Find a 'mind blown' gif for slack",
+  { title: "This is fine", prompt: "Find me a 'this is fine' meme" },
+  { title: "Party parrot", prompt: "I need a thumbs up parrot emoji" },
+  { title: "LGTM", prompt: "Get me a 'LGTM' reaction image" },
+  { title: "Mind blown", prompt: "Find a 'mind blown' reaction image for Slack" },
 ];
 
 const THEMES = [
   { id: "dark", name: "Dark", color: "#f59e0b" },
-  { id: "light", name: "Light", color: "#3b82f6" },
+  { id: "light", name: "Light", color: "#7660c8" },
   { id: "midnight", name: "Midnight", color: "#06b6d4" },
   { id: "sunset", name: "Sunset", color: "#f97316" },
   { id: "forest", name: "Forest", color: "#10b981" },
@@ -30,7 +30,7 @@ function App() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [sessionId] = useState(() => getDistinctId() || crypto.randomUUID());
-  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
   const [themeOpen, setThemeOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -138,34 +138,9 @@ function App() {
   return (
     <>
       <header className="header">
-        <div className="header-glow" />
         <div className="header-inner">
           <div className="header-brand">
-            <div className="header-logo">
-              <svg viewBox="0 0 128 128" width="36" height="36" aria-hidden="true">
-                <defs>
-                  <linearGradient id="logo-bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stopColor="var(--accent)" />
-                    <stop offset="100%" stopColor="var(--accent-hover)" />
-                  </linearGradient>
-                </defs>
-                <rect width="128" height="128" rx="26" fill="url(#logo-bg)" />
-                <rect x="4" y="4" width="120" height="120" rx="22" fill="none" stroke="white" strokeOpacity="0.25" strokeWidth="3" />
-                <polygon
-                  points="64,18 74.5,47.5 106,47.5 80.5,66 90,96 64,78 38,96 47.5,66 22,47.5 53.5,47.5"
-                  fill="white"
-                  fillOpacity="0.95"
-                />
-              </svg>
-            </div>
-            <div className="header-text">
-              <h1 className="header-title">
-                <span className="header-title-emoji">Emoji</span>
-                {" "}
-                <span className="header-title-hero">Hero</span>
-              </h1>
-              <span className="header-tagline">find & customize emoji for Slack</span>
-            </div>
+            <h1 className="header-title">emoji hero<span>.</span></h1>
           </div>
           <div className="header-actions">
             <div className="theme-picker" ref={themeRef}>
@@ -173,12 +148,10 @@ function App() {
                 className="theme-toggle"
                 onClick={() => setThemeOpen(!themeOpen)}
                 aria-label="Change theme"
+                aria-expanded={themeOpen}
+                onKeyDown={(event) => { if (event.key === "Escape") setThemeOpen(false); }}
               >
-                <span className="theme-toggle-swatches">
-                  {THEMES.slice(0, 5).map((t) => (
-                    <span key={t.id} className="theme-toggle-dot" style={{ background: t.color }} />
-                  ))}
-                </span>
+                Appearance
               </button>
               {themeOpen && (
                 <div className="theme-dropdown">
@@ -201,46 +174,19 @@ function App() {
             </div>
           </div>
         </div>
-        <div className="header-accent-line" />
       </header>
 
       {messages.length === 0 ? (
         <div className="welcome">
-          <div className="welcome-logo">
-            <svg viewBox="0 0 128 128" width="56" height="56" aria-hidden="true">
-              <defs>
-                <linearGradient id="welcome-bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="var(--accent)" />
-                  <stop offset="100%" stopColor="var(--accent-hover)" />
-                </linearGradient>
-              </defs>
-              <rect width="128" height="128" rx="26" fill="url(#welcome-bg)" />
-              <rect x="4" y="4" width="120" height="120" rx="22" fill="none" stroke="white" strokeOpacity="0.25" strokeWidth="3" />
-              <polygon
-                points="64,18 74.5,47.5 106,47.5 80.5,66 90,96 64,78 38,96 47.5,66 22,47.5 53.5,47.5"
-                fill="white"
-                fillOpacity="0.95"
-              />
-            </svg>
-          </div>
-          <h2>What emoji do you need?</h2>
-          <p>
-            Tell me what you're looking for and I'll find, customize, and
-            optimize it for Slack.
-          </p>
-          <div className="suggestions">
-            {SUGGESTIONS.map((s) => (
-              <button key={s} onClick={() => sendMessage(s)}>
-                {s}
-              </button>
-            ))}
-          </div>
+          <h2>Find an emoji</h2>
+          <p>Search and edit images for use as Slack emoji.</p>
         </div>
       ) : (
-        <div className="messages">
+        <div className="messages" role="log" aria-label="Emoji conversation" aria-live="polite">
           {messages.map((msg, i) => (
             <div key={i} className={`message ${msg.role}`}>
-              <MessageContent content={msg.content} />
+              <span className="message-author">{msg.role === "user" ? "You" : "Emoji Hero"}</span>
+              {msg.content ? <MessageContent content={msg.content} /> : <span className="thinking">Working…</span>}
               {msg.role === "assistant" && msg.emojis.length > 0 && (
                 <EmojiPreviews emojis={msg.emojis} />
               )}
@@ -250,21 +196,32 @@ function App() {
         </div>
       )}
 
-      <div className="input-area">
+      <div className={`input-area${messages.length === 0 ? " input-welcome" : ""}`}>
         <form onSubmit={handleSubmit}>
           <input
             ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Describe the emoji you want..."
+            placeholder="What are you looking for?"
+            aria-label="Describe the emoji you want"
             disabled={isStreaming}
             autoFocus
           />
-          <button type="submit" disabled={isStreaming || !input.trim()}>
-            {isStreaming ? "..." : "Send"}
+          <button type="submit" aria-label={isStreaming ? "Generating emoji" : "Send message"} disabled={isStreaming || !input.trim()}>
+            {isStreaming ? "…" : <span aria-hidden="true">↑</span>}
           </button>
         </form>
+        {messages.length === 0 && (
+          <div className="suggestions" aria-label="Suggested prompts">
+            <span>Examples</span>
+            {SUGGESTIONS.map((suggestion) => (
+              <button key={suggestion.title} onClick={() => sendMessage(suggestion.prompt)}>
+                {suggestion.title}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );
