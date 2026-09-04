@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
 import pytest
@@ -119,7 +120,11 @@ def test_stream_emits_structured_results_and_restored_context(monkeypatch):
     captured = {}
 
     class StubAgent:
+        @asynccontextmanager
         async def run_stream_events(self, prompt, **kwargs):
+            yield self.events(prompt, **kwargs)
+
+        async def events(self, prompt, **kwargs):
             captured["prompt"] = prompt
             yield FunctionToolCallEvent(
                 ToolCallPart("search_for_images", '{"query":"dog"}')
@@ -182,7 +187,11 @@ def test_stream_emits_emoji_only_for_successful_tool_result(monkeypatch, outcome
     from app import main
 
     class StubAgent:
+        @asynccontextmanager
         async def run_stream_events(self, prompt, **kwargs):
+            yield self.events(prompt, **kwargs)
+
+        async def events(self, prompt, **kwargs):
             yield FunctionToolResultEvent(
                 ToolReturnPart(
                     "make_slack_ready",
@@ -207,3 +216,32 @@ def test_stream_emits_emoji_only_for_successful_tool_result(monkeypatch, outcome
     assert bool(results) is ready
     if ready:
         assert results[0]["download_url"] == "/api/download/abcdef123456"
+
+
+def test_chat_with_real_agent_streaming_interface(monkeypatch):
+    from pydantic_ai import Agent
+    from pydantic_ai.models.function import FunctionModel
+
+    from app import main
+
+    async def stream_response(messages, info):
+        yield "Select an image "
+        yield "to continue."
+
+    agent = Agent(FunctionModel(stream_function=stream_response))
+    monkeypatch.setattr(main, "emoji_agent", agent)
+    monkeypatch.setattr(main, "setup_otel", lambda **kwargs: None)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/chat", json={"message": "Find a cat", "session_id": "real-stream-test"}
+        )
+    chunks = [
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    assert response.status_code == 200
+    assert not any(chunk["type"] == "error" for chunk in chunks)
+    assert "".join(c["content"] for c in chunks if c["type"] == "text_delta") == "Select an image to continue."
+    assert chunks[-1] == {"type": "done", "content": "Select an image to continue."}
+    assert main.conversations["real-stream-test"]

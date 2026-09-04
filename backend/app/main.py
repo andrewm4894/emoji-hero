@@ -109,74 +109,75 @@ async def chat(request: Request, body: ChatRequest):
         accumulated = ""
 
         try:
-            async for event in emoji_agent.run_stream_events(
+            async with emoji_agent.run_stream_events(
                 prompt,
                 deps=deps,
                 message_history=history,
-            ):
-                if isinstance(event, AgentRunResultEvent):
-                    conversations[body.session_id] = event.result.all_messages()
-                    chunk = json.dumps({"type": "done", "content": accumulated})
-                    yield f"data: {chunk}\n\n"
-
-                elif isinstance(event, PartStartEvent):
-                    if isinstance(event.part, TextPart) and event.part.content:
-                        accumulated += event.part.content
-                        chunk = json.dumps(
-                            {"type": "text_delta", "content": event.part.content}
-                        )
+            ) as events:
+                async for event in events:
+                    if isinstance(event, AgentRunResultEvent):
+                        conversations[body.session_id] = event.result.all_messages()
+                        chunk = json.dumps({"type": "done", "content": accumulated})
                         yield f"data: {chunk}\n\n"
 
-                elif isinstance(event, PartDeltaEvent):
-                    if (
-                        isinstance(event.delta, TextPartDelta)
-                        and event.delta.content_delta
-                    ):
-                        accumulated += event.delta.content_delta
-                        chunk = json.dumps(
-                            {"type": "text_delta", "content": event.delta.content_delta}
-                        )
-                        yield f"data: {chunk}\n\n"
-
-                elif isinstance(event, FunctionToolCallEvent):
-                    chunk = json.dumps(
-                        {
-                            "type": "tool_call",
-                            "tool": event.part.tool_name,
-                            "args": event.part.args_as_dict(),
-                        }
-                    )
-                    yield f"data: {chunk}\n\n"
-
-                elif isinstance(event, FunctionToolResultEvent):
-                    chunk = json.dumps(
-                        {"type": "tool_result", "tool": event.tool_call_id}
-                    )
-                    yield f"data: {chunk}\n\n"
-
-                    if event.part.tool_name == "search_for_images":
-                        try:
-                            results = json.loads(event.part.content)
-                            yield f"data: {json.dumps({'type': 'search_results', 'results': results})}\n\n"
-                        except (ValueError, TypeError):
-                            pass
-
-                    if (
-                        event.part.tool_name == "make_slack_ready"
-                        and event.part.outcome == "success"
-                    ):
-                        image_id = _extract_image_id(event.part.content)
-                        if image_id:
-                            emoji_chunk = json.dumps(
-                                {
-                                    "type": "emoji_ready",
-                                    **IMAGE_METADATA.get(image_id, {}),
-                                    "image_id": image_id,
-                                    "image_url": f"/api/images/{image_id}",
-                                    "download_url": f"/api/download/{image_id}",
-                                }
+                    elif isinstance(event, PartStartEvent):
+                        if isinstance(event.part, TextPart) and event.part.content:
+                            accumulated += event.part.content
+                            chunk = json.dumps(
+                                {"type": "text_delta", "content": event.part.content}
                             )
-                            yield f"data: {emoji_chunk}\n\n"
+                            yield f"data: {chunk}\n\n"
+
+                    elif isinstance(event, PartDeltaEvent):
+                        if (
+                            isinstance(event.delta, TextPartDelta)
+                            and event.delta.content_delta
+                        ):
+                            accumulated += event.delta.content_delta
+                            chunk = json.dumps(
+                                {"type": "text_delta", "content": event.delta.content_delta}
+                            )
+                            yield f"data: {chunk}\n\n"
+
+                    elif isinstance(event, FunctionToolCallEvent):
+                        chunk = json.dumps(
+                            {
+                                "type": "tool_call",
+                                "tool": event.part.tool_name,
+                                "args": event.part.args_as_dict(),
+                            }
+                        )
+                        yield f"data: {chunk}\n\n"
+
+                    elif isinstance(event, FunctionToolResultEvent):
+                        chunk = json.dumps(
+                            {"type": "tool_result", "tool": event.tool_call_id}
+                        )
+                        yield f"data: {chunk}\n\n"
+
+                        if event.part.tool_name == "search_for_images":
+                            try:
+                                results = json.loads(event.part.content)
+                                yield f"data: {json.dumps({'type': 'search_results', 'results': results})}\n\n"
+                            except (ValueError, TypeError):
+                                pass
+
+                        if (
+                            event.part.tool_name == "make_slack_ready"
+                            and event.part.outcome == "success"
+                        ):
+                            image_id = _extract_image_id(event.part.content)
+                            if image_id:
+                                emoji_chunk = json.dumps(
+                                    {
+                                        "type": "emoji_ready",
+                                        **IMAGE_METADATA.get(image_id, {}),
+                                        "image_id": image_id,
+                                        "image_url": f"/api/images/{image_id}",
+                                        "download_url": f"/api/download/{image_id}",
+                                    }
+                                )
+                                yield f"data: {emoji_chunk}\n\n"
         except Exception as exc:
             # By now the 200 status and SSE headers are already sent, so raising
             # would just truncate the stream and the client would see nothing —
