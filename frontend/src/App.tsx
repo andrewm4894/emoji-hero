@@ -1,13 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { flushSync } from "react-dom";
-import { streamChat, type ChatChunk, type EmojiReady } from "./api";
-import { getDistinctId, trackEvent } from "./posthog";
+import { streamChat, editImage, apiUrl, type EmojiReady, type SearchResult } from "./api";
+import { EmojiCard, EmojiEditor } from "./EmojiEditor";
+import { trackEvent } from "./posthog";
 import "./App.css";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   emojis: EmojiReady[];
+  results?: SearchResult[];
+  interrupted?: boolean;
+  hiddenResults?: string[];
 }
 
 const SUGGESTIONS = [
@@ -25,11 +28,32 @@ const THEMES = [
   { id: "forest", name: "Forest", color: "#10b981" },
 ] as const;
 
+const STORAGE_KEY = "emoji-hero-conversation-v1";
+function restore(): {sessionId: string; messages: Message[]} {
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (value && typeof value.sessionId === "string" && Array.isArray(value.messages)) {
+      return {...value, messages: value.messages.filter((m: Message) =>
+        ["user", "assistant"].includes(m.role) && typeof m.content === "string" && Array.isArray(m.emojis))};
+    }
+  } catch { /* Storage may be unavailable. */ }
+  return {sessionId: crypto.randomUUID(), messages: []};
+}
+
 function App() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [initial] = useState(restore);
+  const [messages, setMessages] = useState<Message[]>(initial.messages);
+  const [sessionId, setSessionId] = useState(initial.sessionId);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [sessionId] = useState(() => getDistinctId() || crypto.randomUUID());
+  const [status, setStatus] = useState("");
+  const [editor, setEditor] = useState<{emoji: EmojiReady; mode: "crop" | "text"} | null>(null);
+  const controller = useRef<AbortController | null>(null);
+  const busy = useRef(false);
+  const stickToBottom = useRef(true);
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({sessionId, messages})); } catch { /* Keep working without persistence. */ }
+  }, [sessionId, messages]);
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
   const [themeOpen, setThemeOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -53,7 +77,7 @@ function App() {
   }, [themeOpen]);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (stickToBottom.current) messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
   }, []);
 
   useEffect(() => {
@@ -61,74 +85,58 @@ function App() {
   }, [messages, scrollToBottom]);
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || isStreaming) return;
-
-    const userMessage: Message = { role: "user", content: text, emojis: [] };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsStreaming(true);
-    trackEvent("chat_message_sent", {
-      message_length: text.trim().length,
-      conversation_turn: messages.filter((m) => m.role === "user").length + 1,
-    });
-
-    // Add empty assistant message for streaming
-    setMessages((prev) => [...prev, { role: "assistant", content: "", emojis: [] }]);
-
+    if (!text.trim() || busy.current) return;
+    busy.current = true;
+    stickToBottom.current = true;
+    setInput(""); setIsStreaming(true); setStatus("Working…");
+    setMessages((prev) => [...prev, {role: "user", content: text, emojis: []},
+      {role: "assistant", content: "", emojis: [], interrupted: true}]);
+    const abort = new AbortController(); controller.current = abort;
+    trackEvent("chat_message_sent", {message_length: text.length});
+    const history = messages.slice(-30).map((m) => ({role: m.role, content: m.content +
+      (m.results?.length ? "\nImages: " + JSON.stringify(m.results) : "") +
+      (m.emojis.length ? "\nEdited images: " + JSON.stringify(m.emojis) : "")}));
     try {
-      await streamChat(text, sessionId, (chunk: ChatChunk) => {
-        // Track outside the state updater — updaters can re-run under StrictMode
-        if (chunk.type === "emoji_ready" && chunk.image_id) {
-          trackEvent("emoji_ready", { image_id: chunk.image_id });
-        } else if (chunk.type === "error") {
-          trackEvent("chat_error_shown", { source: "stream" });
-        }
-        flushSync(() => {
-          setMessages((prev) => {
-            const updated = prev.slice(0, -1);
-            const last = prev[prev.length - 1];
-            if (last.role !== "assistant") return prev;
-
-            if (chunk.type === "text_delta" && chunk.content) {
-              return [...updated, { ...last, content: last.content + chunk.content }];
-            } else if (chunk.type === "tool_call") {
-              const label = toolLabel(chunk.tool || "tool", chunk.args);
-              return [...updated, { ...last, content: last.content + label }];
-            } else if (chunk.type === "tool_result") {
-              const label = `\n`;
-              return [...updated, { ...last, content: last.content + label }];
-            } else if (chunk.type === "error") {
-              const message = chunk.content || "Something went wrong. Please try again.";
-              return [...updated, { ...last, content: last.content ? `${last.content}\n\n${message}` : message }];
-            } else if (chunk.type === "emoji_ready" && chunk.image_id && chunk.image_url && chunk.download_url) {
-              if (last.emojis.some((e) => e.image_id === chunk.image_id)) return prev;
-              const emoji: EmojiReady = {
-                image_id: chunk.image_id,
-                image_url: chunk.image_url,
-                download_url: chunk.download_url,
-              };
-              return [...updated, { ...last, emojis: [...last.emojis, emoji] }];
-            }
-            return prev;
-          });
+      let completed = false;
+      await streamChat(text, sessionId, (chunk) => {
+        if (chunk.type === "tool_call") { setStatus(toolLabel(chunk.tool || "")); return; }
+        if (chunk.type === "done") { completed = true; return; }
+        setMessages((prev) => {
+          const last = {...prev[prev.length - 1]};
+          if (chunk.type === "text_delta") last.content += chunk.content || "";
+          if (chunk.type === "search_results") last.results = chunk.results || [];
+          if (chunk.type === "error") { last.content = chunk.content || "Could not complete the request. Please try again."; completed = true; }
+          if (chunk.type === "emoji_ready" && chunk.image_id && chunk.image_url && chunk.download_url && !last.emojis.some(e => e.image_id === chunk.image_id)) {
+            last.emojis = [...last.emojis, {image_id:chunk.image_id, image_url:chunk.image_url, download_url:chunk.download_url, source_id:chunk.source_id, text_source_id:chunk.text_source_id, text:chunk.text, position:chunk.position, font_size:chunk.font_size}];
+          }
+          return [...prev.slice(0, -1), last];
         });
-      });
-    } catch (err) {
-      setMessages((prev) => {
-        const updated = prev.slice(0, -1);
-        const last = prev[prev.length - 1];
-        if (last.role === "assistant") {
-          return [...updated, { ...last, content: "Something went wrong. Please try again." }];
-        }
-        return prev;
-      });
-      console.error("Chat error:", err);
-      trackEvent("chat_error_shown", { source: "request" });
-    } finally {
-      setIsStreaming(false);
-      inputRef.current?.focus();
-    }
+      }, history, abort.signal);
+      if (!completed) throw new Error("Response interrupted. Please try again.");
+      setMessages(prev => prev.map((m, i) => i === prev.length-1 ? {...m, interrupted:false} : m));
+    } catch (error) {
+      setMessages(prev => prev.map((m, i) => i === prev.length-1 ? {...m, interrupted:false,
+        content: m.content + (m.content ? "\n\n" : "") + (abort.signal.aborted ? "Stopped." : (error as Error).message)} : m));
+    } finally { busy.current = false; setIsStreaming(false); setStatus(""); controller.current = null; }
   };
+
+  async function selectImage(result: SearchResult) {
+    if (busy.current) return;
+    busy.current = true; setIsStreaming(true); setStatus("Preparing image…");
+    try {
+      const emoji = await editImage({image_id: result.image_id});
+      setMessages(prev => [...prev, {role:"user", content:"Selected an image.", emojis:[]},
+        {role:"assistant", content:"", emojis:[emoji]}]);
+      stickToBottom.current = true;
+    } catch (error) { setMessages(prev => [...prev, {role:"assistant", content:(error as Error).message, emojis:[]}]); }
+    finally { busy.current = false; setIsStreaming(false); setStatus(""); }
+  }
+
+  function newEmoji() {
+    if (busy.current) return;
+    setMessages([]); setSessionId(crypto.randomUUID()); setInput("");
+    inputRef.current?.focus();
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,6 +151,7 @@ function App() {
             <h1 className="header-title">emoji hero<span>.</span></h1>
           </div>
           <div className="header-actions">
+            {messages.length > 0 && <button className="theme-toggle" disabled={isStreaming} onClick={newEmoji}>New emoji</button>}
             <div className="theme-picker" ref={themeRef}>
               <button
                 className="theme-toggle"
@@ -182,14 +191,16 @@ function App() {
           <p>Search and edit images for use as Slack emoji.</p>
         </div>
       ) : (
-        <div className="messages" role="log" aria-label="Emoji conversation" aria-live="polite">
+        <div className="messages" role="log" aria-label="Emoji conversation" onScroll={(e) => {
+          const el = e.currentTarget; stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}>
           {messages.map((msg, i) => (
             <div key={i} className={`message ${msg.role}`}>
               <span className="message-author">{msg.role === "user" ? "You" : "Emoji Hero"}</span>
-              {msg.content ? <MessageContent content={msg.content} /> : <span className="thinking">Working…</span>}
-              {msg.role === "assistant" && msg.emojis.length > 0 && (
-                <EmojiPreviews emojis={msg.emojis} />
-              )}
+              {msg.content && <div>{msg.content.replace(/\/?api\/download\/[a-f0-9]{12}/g, "")}</div>}
+              {msg.results && <SearchGallery results={msg.results} hidden={msg.hiddenResults || []} onHide={(id) => setMessages(prev => prev.map((m, index) => index === i ? {...m, hiddenResults: [...new Set([...(m.hiddenResults || []), id])]} : m))} disabled={isStreaming} onSelect={selectImage} />}
+              {msg.emojis.map(emoji => <EmojiCard key={emoji.image_id} emoji={emoji} disabled={isStreaming} onEdit={mode => setEditor({emoji, mode})} />)}
+              {msg.interrupted && !isStreaming && <p className="muted">Response interrupted. Send your request again to continue.</p>}
             </div>
           ))}
           <div ref={messagesEndRef} />
@@ -197,6 +208,7 @@ function App() {
       )}
 
       <div className={`input-area${messages.length === 0 ? " input-welcome" : ""}`}>
+        {status && <div className="progress" role="status">{status}{controller.current && <button onClick={() => controller.current?.abort()}>Stop</button>}</div>}
         <form onSubmit={handleSubmit}>
           <input
             ref={inputRef}
@@ -205,7 +217,6 @@ function App() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="What are you looking for?"
             aria-label="Describe the emoji you want"
-            disabled={isStreaming}
             autoFocus
           />
           <button type="submit" aria-label={isStreaming ? "Generating emoji" : "Send message"} disabled={isStreaming || !input.trim()}>
@@ -223,94 +234,33 @@ function App() {
           </div>
         )}
       </div>
+      {editor && <EmojiEditor emoji={editor.emoji} mode={editor.mode} onClose={() => setEditor(null)} onSave={(emoji) => {
+        setMessages(prev => [...prev, {role:"assistant", content: editor.mode === "crop" ? "Crop updated." : "Text updated.", emojis:[emoji]}]);
+        stickToBottom.current = true;
+      }} />}
     </>
   );
 }
 
-const MD_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g;
-
-function MessageContent({ content }: { content: string }) {
-  // Split content into text and markdown images
-  const parts: { type: "text" | "image"; text?: string; alt?: string; url?: string }[] = [];
-  let lastIndex = 0;
-
-  for (const match of content.matchAll(MD_IMAGE_REGEX)) {
-    const before = content.slice(lastIndex, match.index);
-    if (before) parts.push({ type: "text", text: before });
-    parts.push({ type: "image", alt: match[1], url: match[2] });
-    lastIndex = match.index! + match[0].length;
-  }
-
-  const remaining = content.slice(lastIndex);
-  if (remaining) parts.push({ type: "text", text: remaining });
-
-  // If no images found, just render as text
-  if (!parts.some((p) => p.type === "image")) {
-    return <div>{content}</div>;
-  }
-
-  return (
-    <div>
-      {parts.map((part, i) =>
-        part.type === "text" ? (
-          <span key={i}>{part.text}</span>
-        ) : (
-          <div key={i} className="search-result-image">
-            <img
-              src={part.url}
-              alt={part.alt || "search result"}
-              loading="lazy"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          </div>
-        )
-      )}
-    </div>
-  );
+function toolLabel(tool: string): string {
+  if (tool === "search_for_images") return "Searching…";
+  if (tool === "download_and_save_image") return "Loading image…";
+  if (tool === "make_slack_ready") return "Preparing download…";
+  return "Editing…";
 }
 
-function toolLabel(tool: string, args?: Record<string, unknown>): string {
-  if (tool === "search_for_images" && args?.query) {
-    return `\nSearching for "${args.query}"...\n`;
-  }
-  if (tool === "download_and_save_image") {
-    return `\nDownloading image...\n`;
-  }
-  if (tool === "add_text") {
-    return `\nAdding text overlay...\n`;
-  }
-  if (tool === "make_slack_ready") {
-    return `\nOptimizing for Slack...\n`;
-  }
-  return `\nRunning ${tool}...\n`;
-}
-
-function EmojiPreviews({ emojis }: { emojis: EmojiReady[] }) {
-  return (
-    <div className="emoji-preview">
-      {emojis.map((emoji) => (
-        <div key={emoji.image_id} className="emoji-card">
-          <img
-            src={emoji.image_url}
-            alt={`emoji ${emoji.image_id}`}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-          <a
-            className="download-btn"
-            href={emoji.download_url}
-            download
-            onClick={() => trackEvent("emoji_downloaded", { image_id: emoji.image_id })}
-          >
-            Download
-          </a>
-        </div>
-      ))}
-    </div>
-  );
+function SearchGallery({results, hidden, onHide, disabled, onSelect}: {results: SearchResult[]; hidden: string[]; onHide: (id: string) => void; disabled: boolean; onSelect: (result: SearchResult) => void}) {
+  const available = results.filter(r => !hidden.includes(r.image_id));
+  return <div className="search-gallery-wrap">
+    {available.length ? <div className="search-gallery">{available.map((result, index) => <div className="search-tile" key={result.image_id}>
+      <button disabled={disabled} className="select-image" onClick={() => onSelect(result)} aria-label={`Select image ${index + 1}: ${result.description}`}>
+        <img src={apiUrl(result.image_url)} alt={result.description} onError={() => onHide(result.image_id)} />
+        <span>Use image</span>
+      </button>
+      <button className="hide-result" onClick={() => onHide(result.image_id)}>Hide result</button>
+    </div>)}</div> : <p>No usable images. Try a different search.</p>}
+    {hidden.length > 0 && <p className="muted">{hidden.length} unavailable or hidden {hidden.length === 1 ? "result" : "results"}.</p>}
+  </div>;
 }
 
 export default App;

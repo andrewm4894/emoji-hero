@@ -10,6 +10,8 @@ from app.config import settings
 STORAGE = Path(settings.image_storage_dir)
 STORAGE.mkdir(parents=True, exist_ok=True)
 
+IMAGE_METADATA: dict[str, dict] = {}
+
 SLACK_MAX_SIZE = 128 * 1024  # 128KB
 SLACK_DIMENSIONS = (128, 128)
 # Every on-disk format the service will read back by id. The single declarative home:
@@ -68,6 +70,11 @@ def add_text_to_image(
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
 
+    # Shrink long labels to fit, including the outline.
+    while text_w + 12 > img.width and font.size > 8:
+        font = font.font_variant(size=font.size - 1)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
     padding = 4
     if position == "top":
         xy = ((img.width - text_w) // 2, padding)
@@ -76,6 +83,7 @@ def add_text_to_image(
     else:  # bottom
         xy = ((img.width - text_w) // 2, img.height - text_h - padding)
 
+    xy = (xy[0] - bbox[0], xy[1] - bbox[1])
     draw.text(
         xy,
         text,
@@ -90,6 +98,9 @@ def add_text_to_image(
     new_id = uuid.uuid4().hex[:12]
     out_path = STORAGE / f"{new_id}.png"
     result.save(str(out_path), "PNG")
+    IMAGE_METADATA[new_id] = {"text_source_id": image_id, "text": text,
+                              "position": position, "font_size": font_size,
+                              "source_id": IMAGE_METADATA.get(image_id, {}).get("source_id", image_id)}
     return new_id
 
 
@@ -102,7 +113,12 @@ def crop_and_resize(
     src_path = _find_image(image_id)
     img = Image.open(src_path).convert("RGBA")
 
+    if not 1 <= size[0] <= 2048 or not 1 <= size[1] <= 2048:
+        raise ValueError("Invalid output dimensions")
     if crop_box:
+        left, top, right, bottom = crop_box
+        if not (0 <= left < right <= img.width and 0 <= top < bottom <= img.height):
+            raise ValueError("Crop must stay within image bounds")
         img = img.crop(crop_box)
 
     # Resize maintaining aspect ratio, fitting within the target size
@@ -118,6 +134,8 @@ def crop_and_resize(
     new_id = uuid.uuid4().hex[:12]
     out_path = STORAGE / f"{new_id}.png"
     img.save(str(out_path), "PNG")
+    IMAGE_METADATA[new_id] = ({"source_id": image_id} if crop_box else
+                              {**IMAGE_METADATA.get(image_id, {}), "source_id": IMAGE_METADATA.get(image_id, {}).get("source_id", image_id)})
     return new_id
 
 
@@ -155,6 +173,7 @@ def prepare_for_slack(image_id: str) -> str:
         img_small = img.resize(current_size, Image.Resampling.LANCZOS)
         img_small.save(str(out_path), "PNG", optimize=True)
 
+    IMAGE_METADATA[new_id] = IMAGE_METADATA.get(image_id, {"source_id": image_id}).copy()
     return new_id
 
 
@@ -166,6 +185,9 @@ def get_image_path(image_id: str) -> str | None:
 
 def _find_image(image_id: str) -> Path | None:
     """Find an image file by ID in storage."""
+    import re
+    if not re.fullmatch(r"[a-f0-9]{12}", image_id):
+        return None
     for ext in IMAGE_EXTS:
         path = STORAGE / f"{image_id}.{ext}"
         if path.exists():

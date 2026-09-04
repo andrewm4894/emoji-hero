@@ -1,3 +1,6 @@
+import asyncio
+import json
+
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
@@ -6,6 +9,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.config import settings
 from app.image_processing import (
+    IMAGE_METADATA,
     add_text_to_image,
     crop_and_resize,
     download_image,
@@ -20,29 +24,18 @@ class EmojiDeps(BaseModel):
     distinct_id: str = "anonymous"
 
 
-SYSTEM_PROMPT = """\
-You are Emoji Hero — a friendly assistant that helps people find, customize, and \
-download custom emoji for Slack.
-
-Your workflow:
-1. Search immediately — don't ask clarifying questions unless truly ambiguous.
-2. Present results as a visual gallery by including each image URL in markdown format: \
-![description](URL) — the frontend will render these as a gallery.
-3. Let the user pick one by number, or refine the search.
-4. Apply customizations (text overlay, cropping, resizing) as requested.
-5. Prepare the final image for Slack (128x128, <128KB PNG) and provide a download link.
-
-IMPORTANT: When showing search results, always use markdown images so the user can \
-SEE the options. Format each result like:
-1. ![brief description](image_url)
-2. ![brief description](image_url)
-...etc
-
-When adding text, suggest good defaults for position and style but let the user override.
-
-Always prepare the final emoji for Slack before telling the user it's ready to download.
-
-Keep responses concise and fun — you're making emoji, not writing essays!
+SYSTEM_PROMPT = """Help users find and edit Slack emoji. Be concise and factual.
+Search immediately unless the request is ambiguous. Search results are shown as clickable
+cards by the app: do not repeat image markdown, numbered lists, or URLs. Say only
+"Select an image to continue." If there are no results, suggest another search.
+Use the supplied image_id when the user selects an image. Never download it again.
+The UI offers precise crop and text controls. Do not claim to crop a face or object
+unless the user supplied crop coordinates. For a visual crop request, tell them to
+use Crop on the image card. You cannot see image contents or infer crop coordinates.
+For text, call add_text directly; it normalizes size and replaces any previous label.
+When available, use text_source_id to replace a label without layering it. Always call
+make_slack_ready after editing. Do not print download paths: the UI shows Download.
+Do not claim success when a tool failed. Describe only edits actually performed.
 """
 
 openai_client = AsyncOpenAI(
@@ -68,15 +61,20 @@ async def search_for_images(ctx: RunContext[EmojiDeps], query: str) -> str:
     reaction images, or any visual content the user is looking for."""
     results = await search_images(query)
 
-    if not results:
-        return "No images found. Try a different search query."
+    async def verify(img):
+        try:
+            image_id, _ = await download_image(img["url"])
+            return {
+                "image_id": image_id,
+                "image_url": f"/api/images/{image_id}",
+                "description": img["description"] or "Search result",
+            }
+        except Exception:
+            return None
 
-    lines = []
-    for i, img in enumerate(results, 1):
-        desc = img["description"] or "No description"
-        lines.append(f"{i}. {desc}\n   URL: {img['url']}")
-
-    return "\n\n".join(lines)
+    # Serve decoded copies, avoiding broken links and browser hotlink failures.
+    verified = await asyncio.gather(*(verify(img) for img in results[:8]))
+    return json.dumps([img for img in verified if img])
 
 
 @emoji_agent.tool
@@ -102,8 +100,10 @@ async def add_text(
     """Add text overlay to an image. Position can be 'top', 'center', or 'bottom'. \
     Returns a new image_id with the text applied."""
     try:
+        source_id = IMAGE_METADATA.get(image_id, {}).get("text_source_id", image_id)
+        normalized_id = crop_and_resize(source_id)
         new_id = add_text_to_image(
-            image_id, text, position=position, font_size=font_size, color=color
+            normalized_id, text, position=position, font_size=font_size, color=color
         )
         return f"Text added! New image_id: {new_id}"
     except Exception as e:
@@ -116,10 +116,11 @@ async def resize_image(
     image_id: str,
     width: int = 128,
     height: int = 128,
+    crop_box: tuple[int, int, int, int] | None = None,
 ) -> str:
     """Resize and crop an image. Returns a new image_id."""
     try:
-        new_id = crop_and_resize(image_id, size=(width, height))
+        new_id = crop_and_resize(image_id, crop_box=crop_box, size=(width, height))
         return f"Resized! New image_id: {new_id}"
     except Exception as e:
         return f"Failed to resize: {e}"

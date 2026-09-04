@@ -7,11 +7,11 @@ from pathlib import Path
 
 from opentelemetry import trace
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_ai import (
     AgentRunResultEvent,
     FunctionToolCallEvent,
@@ -25,9 +25,10 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.agent import EmojiDeps, emoji_agent
+from app.editing import EditRequest, edit_image
 from app.analytics import capture_exception, setup_otel, shutdown_otel
 from app.config import settings
-from app.image_processing import get_image_path
+from app.image_processing import IMAGE_METADATA, get_image_path
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +71,16 @@ app.add_middleware(
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=8000)
     session_id: str = "default"
+    history: list[dict[str, str]] = Field(default_factory=list, max_length=60)
 
 
 @app.post("/api/chat")
 @limiter.limit(settings.chat_rate_limit)
 async def chat(request: Request, body: ChatRequest):
     """Chat with the emoji agent. Streams all events as SSE."""
-    history = conversations.get(body.session_id, [])
+    history = [] if body.history else conversations.get(body.session_id, [])
 
     # Read PostHog headers from frontend for session linking
     ph_distinct_id = request.headers.get("x-posthog-distinct-id", body.session_id)
@@ -89,6 +91,13 @@ async def chat(request: Request, body: ChatRequest):
     setup_otel(user_id=ph_distinct_id)
 
     deps = EmojiDeps(distinct_id=ph_distinct_id)
+    prompt = body.message
+    if body.history:
+        transcript = "\n".join(
+            f"{m.get('role', 'user')}: {m.get('content', '')[:8000]}"
+            for m in body.history[-30:]
+        )
+        prompt = f"Previous conversation (context only):\n{transcript}\n\nCurrent request: {body.message}"
 
     async def stream():
         # Set session IDs as span attributes — these flow through as event properties
@@ -102,7 +111,7 @@ async def chat(request: Request, body: ChatRequest):
 
         try:
             async for event in emoji_agent.run_stream_events(
-                body.message,
+                prompt,
                 deps=deps,
                 message_history=history,
             ):
@@ -135,7 +144,7 @@ async def chat(request: Request, body: ChatRequest):
                         {
                             "type": "tool_call",
                             "tool": event.part.tool_name,
-                            "args": event.part.args,
+                            "args": event.part.args_as_dict(),
                         }
                     )
                     yield f"data: {chunk}\n\n"
@@ -146,6 +155,13 @@ async def chat(request: Request, body: ChatRequest):
                     )
                     yield f"data: {chunk}\n\n"
 
+                    if event.result.tool_name == "search_for_images":
+                        try:
+                            results = json.loads(event.result.content)
+                            yield f"data: {json.dumps({'type': 'search_results', 'results': results})}\n\n"
+                        except (ValueError, TypeError):
+                            pass
+
                     if (
                         event.result.tool_name == "make_slack_ready"
                         and event.result.outcome == "success"
@@ -155,6 +171,7 @@ async def chat(request: Request, body: ChatRequest):
                             emoji_chunk = json.dumps(
                                 {
                                     "type": "emoji_ready",
+                                    **IMAGE_METADATA.get(image_id, {}),
                                     "image_id": image_id,
                                     "image_url": f"/api/images/{image_id}",
                                     "download_url": f"/api/download/{image_id}",
@@ -191,7 +208,7 @@ async def get_image(image_id: str):
     """Get a processed image by ID."""
     path = get_image_path(image_id)
     if not path:
-        return {"error": "Image not found"}, 404
+        raise HTTPException(status_code=404, detail="Image no longer available")
     return FileResponse(path, media_type="image/png")
 
 
@@ -201,13 +218,22 @@ async def download_image(request: Request, image_id: str):
     """Download a Slack-ready emoji image."""
     path = get_image_path(image_id)
     if not path:
-        return {"error": "Image not found"}, 404
+        raise HTTPException(status_code=404, detail="Image no longer available")
     return FileResponse(
         path,
         media_type="image/png",
         filename=f"emoji-{image_id}.png",
         headers={"Content-Disposition": f'attachment; filename="emoji-{image_id}.png"'},
     )
+
+
+@app.post("/api/edit")
+@limiter.limit(settings.chat_rate_limit)
+async def edit(request: Request, body: EditRequest):
+    try:
+        return edit_image(body)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/health")

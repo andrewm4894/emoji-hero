@@ -1,3 +1,5 @@
+import asyncio
+
 from tavily import TavilyClient
 
 from app.config import settings
@@ -11,7 +13,8 @@ async def search_images(query: str, max_results: int = 5) -> list[dict]:
     """Search for images using Tavily. Returns list of {url, description}."""
     client = get_tavily_client()
 
-    response = client.search(
+    response = await asyncio.to_thread(
+        client.search,
         query=query,
         search_depth="basic",
         include_images=True,

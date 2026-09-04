@@ -6,10 +6,21 @@ export interface EmojiReady {
   image_id: string;
   image_url: string;
   download_url: string;
+  source_id?: string;
+  text_source_id?: string;
+  text?: string;
+  position?: string;
+  font_size?: number;
 }
 
 export interface ChatChunk {
-  type: "text_delta" | "done" | "tool_call" | "tool_result" | "emoji_ready" | "error";
+  type: "text_delta" | "done" | "tool_call" | "tool_result" | "emoji_ready" | "search_results" | "error";
+  source_id?: string;
+  text_source_id?: string;
+  text?: string;
+  position?: string;
+  font_size?: number;
+  results?: SearchResult[];
   content?: string;
   tool?: string;
   args?: Record<string, unknown>;
@@ -21,16 +32,19 @@ export interface ChatChunk {
 export async function streamChat(
   message: string,
   sessionId: string,
-  onChunk: (chunk: ChatChunk) => void
+  onChunk: (chunk: ChatChunk) => void,
+  history: {role: string; content: string}[] = [],
+  signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/api/chat`, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-POSTHOG-SESSION-ID": getSessionId(),
       "X-POSTHOG-DISTINCT-ID": getDistinctId(),
     },
-    body: JSON.stringify({ message, session_id: sessionId }),
+    body: JSON.stringify({ message, session_id: sessionId, history }),
   });
 
   if (!response.ok) {
@@ -54,21 +68,14 @@ export async function streamChat(
     for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed.startsWith("data: ")) {
-        try {
-          onChunk(JSON.parse(trimmed.slice(6)) as ChatChunk);
-        } catch {
-          // skip malformed
-        }
+        const chunk = JSON.parse(trimmed.slice(6)) as ChatChunk;
+        onChunk(chunk);
       }
     }
   }
 
   if (buffer.trim().startsWith("data: ")) {
-    try {
-      onChunk(JSON.parse(buffer.trim().slice(6)) as ChatChunk);
-    } catch {
-      // skip
-    }
+    onChunk(JSON.parse(buffer.trim().slice(6)) as ChatChunk);
   }
 }
 
@@ -78,4 +85,26 @@ export function getImageUrl(imageId: string): string {
 
 export function getDownloadUrl(imageId: string): string {
   return `${API_BASE}/api/download/${imageId}`;
+}
+
+export interface SearchResult {
+  image_id: string;
+  image_url: string;
+  description: string;
+}
+
+export function apiUrl(path: string) { return path.startsWith("/") ? `${API_BASE}${path}` : path; }
+
+export async function editImage(body: {
+  image_id: string;
+  crop?: {x: number; y: number; width: number; height: number};
+  text?: string;
+  position?: string;
+  font_size?: number;
+}): Promise<EmojiReady> {
+  const response = await fetch(`${API_BASE}/api/edit`, {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(response.status === 404 ? "This image has expired. Search again." : "Could not apply the edit. Please try again.");
+  return response.json();
 }

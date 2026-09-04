@@ -16,3 +16,17 @@ If chat returns an error, check the backend terminal. An OpenRouter 401 means th
 ## Frontend checks
 
 Run `npm run build` and `npm run lint` from `frontend/`.
+
+## Editing and conversations
+
+Search results are downloaded and decoded before they appear in a clickable grid.
+Use **Hide result** for irrelevant images or a placeholder returned by the source.
+Select an image to prepare it for Slack, then use **Crop** or **Edit text** to adjust
+it. The result shows an enlarged preview and a 20px reaction preview.
+
+The current conversation is saved in this browser. **New emoji** starts a separate
+conversation. Image files are stored on the server and may disappear after a
+server restart or deployment; unavailable images can be replaced with a new search.
+
+Backend checks: run `uv run python -m pytest -q` and `uv run ruff check app/ tests/`
+from `backend/`.
