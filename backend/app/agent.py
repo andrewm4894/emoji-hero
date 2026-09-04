@@ -69,7 +69,7 @@ async def search_for_images(ctx: RunContext[EmojiDeps], query: str) -> str:
                 "image_url": f"/api/images/{image_id}",
                 "description": img["description"] or "Search result",
             }
-        except Exception:
+        except Exception:  # noqa: BLE001 -- Skip any image the decoder cannot load.
             return None
 
     # Serve decoded copies, avoiding broken links and browser hotlink failures.
@@ -82,9 +82,9 @@ async def download_and_save_image(ctx: RunContext[EmojiDeps], url: str) -> str:
     """Download an image from a URL and save it for processing. \
     Returns the image_id to use with other tools."""
     try:
-        image_id, path = await download_image(url)
+        image_id, _path = await download_image(url)
         return f"Downloaded! image_id: {image_id}"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- Return tool failures to the agent.
         return f"Failed to download image: {e}"
 
 
@@ -106,7 +106,7 @@ async def add_text(
             normalized_id, text, position=position, font_size=font_size, color=color
         )
         return f"Text added! New image_id: {new_id}"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- Return tool failures to the agent.
         return f"Failed to add text: {e}"
 
 
@@ -122,7 +122,7 @@ async def resize_image(
     try:
         new_id = crop_and_resize(image_id, crop_box=crop_box, size=(width, height))
         return f"Resized! New image_id: {new_id}"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- Return tool failures to the agent.
         return f"Failed to resize: {e}"
 
 
@@ -133,5 +133,5 @@ async def make_slack_ready(ctx: RunContext[EmojiDeps], image_id: str) -> str:
     try:
         new_id = prepare_for_slack(image_id)
         return f"Slack-ready! Final image_id: {new_id} — the user can download this at /api/download/{new_id}"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- Return tool failures to the agent.
         return f"Failed to prepare for Slack: {e}"

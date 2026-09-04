@@ -6,7 +6,7 @@ class Settings(BaseSettings):
 
     # OpenRouter
     openrouter_api_key: str = ""
-    openrouter_model: str = "openai/gpt-4.1"
+    openrouter_model: str = "openai/gpt-5.4-mini"
 
     # Tavily
     tavily_api_key: str = ""

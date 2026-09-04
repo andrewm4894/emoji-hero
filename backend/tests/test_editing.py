@@ -111,9 +111,10 @@ def test_search_filters_failed_downloads(monkeypatch):
 
 
 def test_stream_emits_structured_results_and_restored_context(monkeypatch):
-    from app import main
     from pydantic_ai import FunctionToolCallEvent, FunctionToolResultEvent
     from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+
+    from app import main
 
     captured = {}
 
@@ -171,3 +172,38 @@ def test_agent_text_replacement_after_resize_uses_clean_source():
     expected = ip.add_text_to_image(result["text_source_id"], "OK")
     with Image.open(ip.get_image_path(new_id)) as actual_image, Image.open(ip.get_image_path(expected)) as expected_image:
         assert actual_image.tobytes() == expected_image.tobytes()
+
+
+@pytest.mark.parametrize("outcome,ready", [("success", True), ("failed", False)])
+def test_stream_emits_emoji_only_for_successful_tool_result(monkeypatch, outcome, ready):
+    from pydantic_ai import FunctionToolResultEvent
+    from pydantic_ai.messages import ToolReturnPart
+
+    from app import main
+
+    class StubAgent:
+        async def run_stream_events(self, prompt, **kwargs):
+            yield FunctionToolResultEvent(
+                ToolReturnPart(
+                    "make_slack_ready",
+                    "Slack-ready! Final image_id: abcdef123456",
+                    outcome=outcome,
+                )
+            )
+
+    monkeypatch.setattr(main, "emoji_agent", StubAgent())
+    monkeypatch.setattr(main, "setup_otel", lambda **kwargs: None)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/chat", json={"message": "Prepare it", "session_id": "tool-result-test"}
+        )
+    chunks = [
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    assert not any(chunk["type"] == "error" for chunk in chunks)
+    results = [chunk for chunk in chunks if chunk["type"] == "emoji_ready"]
+    assert bool(results) is ready
+    if ready:
+        assert results[0]["download_url"] == "/api/download/abcdef123456"

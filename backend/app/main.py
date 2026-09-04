@@ -5,12 +5,11 @@ import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from opentelemetry import trace
-
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from opentelemetry import trace
 from pydantic import BaseModel, Field
 from pydantic_ai import (
     AgentRunResultEvent,
@@ -25,9 +24,9 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.agent import EmojiDeps, emoji_agent
-from app.editing import EditRequest, edit_image
 from app.analytics import capture_exception, setup_otel, shutdown_otel
 from app.config import settings
+from app.editing import EditRequest, edit_image
 from app.image_processing import IMAGE_METADATA, get_image_path
 
 logger = logging.getLogger(__name__)
@@ -155,18 +154,18 @@ async def chat(request: Request, body: ChatRequest):
                     )
                     yield f"data: {chunk}\n\n"
 
-                    if event.result.tool_name == "search_for_images":
+                    if event.part.tool_name == "search_for_images":
                         try:
-                            results = json.loads(event.result.content)
+                            results = json.loads(event.part.content)
                             yield f"data: {json.dumps({'type': 'search_results', 'results': results})}\n\n"
                         except (ValueError, TypeError):
                             pass
 
                     if (
-                        event.result.tool_name == "make_slack_ready"
-                        and event.result.outcome == "success"
+                        event.part.tool_name == "make_slack_ready"
+                        and event.part.outcome == "success"
                     ):
-                        image_id = _extract_image_id(event.result.content)
+                        image_id = _extract_image_id(event.part.content)
                         if image_id:
                             emoji_chunk = json.dumps(
                                 {

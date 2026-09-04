@@ -59,10 +59,10 @@ def add_text_to_image(
     # Try to use a good font, fall back to default
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-    except (OSError, IOError):
+    except OSError:
         try:
             font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
-        except (OSError, IOError):
+        except OSError:
             font = ImageFont.load_default()
 
     # Calculate text position

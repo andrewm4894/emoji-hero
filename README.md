@@ -30,3 +30,13 @@ server restart or deployment; unavailable images can be replaced with a new sear
 
 Backend checks: run `uv run python -m pytest -q` and `uv run ruff check app/ tests/`
 from `backend/`.
+
+## LLM configuration
+
+The default model is `openai/gpt-5.4-mini` through OpenRouter, using Pydantic AI
+2 and OpenAI SDK 3. It supports the existing Chat Completions streaming and
+function tools. Set `OPENROUTER_MODEL` in `backend/.env` to override it, then
+restart the backend. Existing environment overrides take precedence over defaults.
+
+GPT-6 Astra is newer, but its tool calling requires a Responses API migration;
+it is not a drop-in replacement for this agent.

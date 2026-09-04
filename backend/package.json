@@ -9,6 +9,6 @@
     "coherence:hooks-check": "coherence hooks --check --host claude"
   },
   "devDependencies": {
-    "@danilocampos/coherence": "^0.33.0"
+    "@danilocampos/coherence": "^0.37.1"
   }
 }
