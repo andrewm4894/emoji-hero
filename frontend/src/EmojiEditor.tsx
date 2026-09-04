@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { apiUrl, editImage, getImageUrl, type EmojiReady } from "./api";
 
 export function EmojiEditor({ emoji, mode, onSave, onClose }: {
@@ -51,12 +51,55 @@ export function EmojiEditor({ emoji, mode, onSave, onClose }: {
   </dialog>;
 }
 
+function SlackReaction({ imageUrl }: { imageUrl: string }) {
+  const tooltipId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const tooltip = useRef<HTMLDivElement>(null);
+
+  function hidePreview() {
+    tooltip.current?.hidePopover();
+  }
+
+  function showPreview() {
+    if (!trigger.current || !tooltip.current) return;
+    const rect = trigger.current.getBoundingClientRect();
+    const width = 176;
+    const height = 184;
+    tooltip.current.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, rect.left + rect.width / 2 - width / 2))}px`;
+    tooltip.current.style.top = `${rect.top >= height + 12 ? rect.top - height - 8 : Math.min(rect.bottom + 8, window.innerHeight - height - 8)}px`;
+    tooltip.current.showPopover();
+  }
+
+  useEffect(() => {
+    window.addEventListener("scroll", hidePreview, true);
+    window.addEventListener("resize", hidePreview);
+    return () => {
+      window.removeEventListener("scroll", hidePreview, true);
+      window.removeEventListener("resize", hidePreview);
+    };
+  }, []);
+
+  return <div className="slack-preview" onMouseEnter={showPreview} onMouseLeave={hidePreview}>
+    <span>In Slack</span>
+    <button ref={trigger} type="button" className="slack-reaction"
+      aria-label="Preview emoji at a larger size" aria-describedby={tooltipId}
+      onFocus={showPreview} onBlur={hidePreview} onClick={showPreview}
+      onKeyDown={(event) => { if (event.key === "Escape") { hidePreview(); event.stopPropagation(); } }}>
+      <img src={imageUrl} alt="" /> <span>1</span>
+    </button>
+    <div ref={tooltip} id={tooltipId} className="slack-emoji-popover" popover="auto" role="tooltip">
+      <img src={imageUrl} alt="Enlarged emoji preview" />
+      <span>Custom emoji</span>
+    </div>
+  </div>;
+}
+
 export function EmojiCard({ emoji, disabled, onEdit }: {emoji: EmojiReady; disabled: boolean; onEdit: (mode: "crop" | "text") => void}) {
   const [failed, setFailed] = useState(false);
   return <div className="result-card">
     {failed ? <p role="status">Image unavailable. Search again to replace it.</p> : <>
       <div className="result-previews"><img className="large-preview" src={apiUrl(emoji.image_url)} alt="Edited emoji preview" onError={() => setFailed(true)} />
-        <div className="slack-preview"><span>In Slack</span><div><img src={apiUrl(emoji.image_url)} alt="Emoji at Slack reaction size" /> <span>1</span></div></div>
+        <SlackReaction imageUrl={apiUrl(emoji.image_url)} />
       </div>
       <div className="result-actions"><a href={apiUrl(emoji.download_url)} download>Download PNG</a><button disabled={disabled} onClick={() => onEdit("text")}>Edit text</button><button disabled={disabled} onClick={() => onEdit("crop")}>Crop</button></div>
     </>}

@@ -217,8 +217,14 @@ button:disabled { opacity: .4; cursor: default; }
 .result-previews { display: flex; gap: 28px; align-items: center; }
 .large-preview { width: 192px; height: 192px; object-fit: contain; background: repeating-conic-gradient(var(--checker-a) 0% 25%,var(--checker-b) 0% 50%) 50% / 16px 16px; }
 .slack-preview { color: var(--text-muted); font-size: 11px; }
-.slack-preview > div { display: flex; align-items: center; gap: 5px; margin-top: 8px; border: 1px solid var(--border); border-radius: 12px; padding: 4px 8px; }
-.slack-preview img { width: 20px; height: 20px; object-fit: contain; }
+.slack-reaction { display: flex; align-items: center; gap: 5px; margin-top: 8px; border: 1px solid var(--border); border-radius: 12px; padding: 4px 8px; background: var(--surface); color: var(--text-muted); font: inherit; cursor: pointer; }
+.slack-reaction:hover, .slack-reaction:focus-visible { border-color: var(--accent); background: var(--surface-hover); }
+.slack-reaction img { width: 20px; height: 20px; object-fit: contain; }
+.slack-emoji-popover { position: fixed; inset: auto; margin: 0; width: 176px; height: 184px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); box-shadow: 0 8px 28px #0004; text-align: center; }
+.slack-emoji-popover:popover-open { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.slack-emoji-popover img { width: 128px; height: 128px; object-fit: contain; }
+.slack-emoji-popover span { font-size: 11px; line-height: 12px; }
+.slack-emoji-popover::backdrop { background: transparent; pointer-events: none; }
 .result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
 .result-actions a { color: var(--text); font-size: 12px; text-underline-offset: 3px; margin-right: auto; }
 .editor { margin: auto; padding: 24px; width: min(460px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow: auto; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 12px; }
