@@ -101,11 +101,12 @@ function App() {
       await streamChat(text, sessionId, (chunk) => {
         if (chunk.type === "tool_call") { setStatus(toolLabel(chunk.tool || "")); return; }
         if (chunk.type === "done") { completed = true; return; }
+        if (chunk.type === "error") completed = true;
         setMessages((prev) => {
           const last = {...prev[prev.length - 1]};
           if (chunk.type === "text_delta") last.content += chunk.content || "";
           if (chunk.type === "search_results") last.results = chunk.results || [];
-          if (chunk.type === "error") { last.content = chunk.content || "Could not complete the request. Please try again."; completed = true; }
+          if (chunk.type === "error") last.content = chunk.content || "Could not complete the request. Please try again.";
           if (chunk.type === "emoji_ready" && chunk.image_id && chunk.image_url && chunk.download_url && !last.emojis.some(e => e.image_id === chunk.image_id)) {
             last.emojis = [...last.emojis, {image_id:chunk.image_id, image_url:chunk.image_url, download_url:chunk.download_url, source_id:chunk.source_id, text_source_id:chunk.text_source_id, text:chunk.text, position:chunk.position, font_size:chunk.font_size}];
           }
