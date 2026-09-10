@@ -97,6 +97,29 @@
   cursor: pointer;
 }
 .suggestions button:hover { color: var(--text); border-color: var(--text-muted); }
+.conversation-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.conversation-actions > span { margin-right: auto; }
+.new-emoji-btn {
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.new-emoji-btn:hover:not(:disabled) { background: var(--surface-hover); }
+.new-emoji-btn:disabled { opacity: .4; cursor: default; }
 .messages {
   flex: 1;
   overflow-y: auto;
