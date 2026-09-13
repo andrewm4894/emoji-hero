@@ -134,6 +134,7 @@ function App() {
 
   function newEmoji() {
     if (busy.current) return;
+    trackEvent("conversation_reset", {message_count: messages.length});
     setMessages([]); setSessionId(crypto.randomUUID()); setInput("");
     inputRef.current?.focus();
   }
@@ -151,7 +152,6 @@ function App() {
             <h1 className="header-title">emoji hero<span>.</span></h1>
           </div>
           <div className="header-actions">
-            {messages.length > 0 && <button className="theme-toggle" disabled={isStreaming} onClick={newEmoji}>New emoji</button>}
             <div className="theme-picker" ref={themeRef}>
               <button
                 className="theme-toggle"
@@ -215,7 +215,7 @@ function App() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="What are you looking for?"
+            placeholder={messages.length === 0 ? "What are you looking for?" : "Reply to keep working on this emoji…"}
             aria-label="Describe the emoji you want"
             autoFocus
           />
@@ -223,7 +223,7 @@ function App() {
             {isStreaming ? "…" : <span aria-hidden="true">↑</span>}
           </button>
         </form>
-        {messages.length === 0 && (
+        {messages.length === 0 ? (
           <div className="suggestions" aria-label="Suggested prompts">
             <span>Examples</span>
             {SUGGESTIONS.map((suggestion) => (
@@ -231,6 +231,13 @@ function App() {
                 {suggestion.title}
               </button>
             ))}
+          </div>
+        ) : (
+          <div className="conversation-actions">
+            <span>Replies keep building this emoji.</span>
+            <button type="button" className="new-emoji-btn" disabled={isStreaming} onClick={newEmoji}>
+              Start a new emoji
+            </button>
           </div>
         )}
       </div>
