@@ -1,0 +1,43 @@
+# Plano config for Emoji Hero — LLM gateway + Signals™.
+#
+# Plano sits between the pydantic-ai agent and OpenRouter. It proxies the
+# OpenAI-compatible chat-completions calls and, with tracing enabled, computes
+# model-free behavioral Signals (interaction / execution / environment) and
+# emits them as OTLP/gRPC spans.
+#
+# Run:
+#   planoai trace listen          # local OTLP/gRPC receiver on :4317 (for `planoai trace`)
+#   planoai up backend/plano_config.yaml
+#
+# Point the backend at this gateway with PLANO_GATEWAY_URL=http://localhost:12000/v1
+version: v0.4.0
+
+listeners:
+  - type: model
+    name: emoji_hero_gateway
+    address: 0.0.0.0
+    port: 12000
+
+model_providers:
+  # OpenRouter is a first-class provider: the `openrouter/` prefix selects it,
+  # and the remainder (`openai/gpt-5.1-codex-mini`) is forwarded upstream as the
+  # model id. Plano injects the access_key, so the backend sends a placeholder.
+  - model: openrouter/openai/gpt-5.1-codex-mini
+    base_url: https://openrouter.ai/api/v1
+    access_key: $OPENROUTER_API_KEY
+    default: true
+
+  # Wildcard so any other OpenRouter model is reachable (e.g. for comparison).
+  - model: openrouter/*
+    base_url: https://openrouter.ai/api/v1
+    access_key: $OPENROUTER_API_KEY
+
+# Signals are computed on the request path and emitted as OTEL span attributes
+# + span events. random_sampling: 100 traces every request.
+#
+# Export to the dedicated bridge collector on :4319 (see otel-collector-plano.yaml),
+# which forwards to PostHog. Default (:4317) is the posthog-repo local collector,
+# which we keep isolated from Plano traffic.
+tracing:
+  random_sampling: 100
+  opentracing_grpc_endpoint: http://localhost:4319
