@@ -1,5 +1,7 @@
 import asyncio
 import json
+import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
@@ -245,3 +247,20 @@ def test_chat_with_real_agent_streaming_interface(monkeypatch):
     assert "".join(c["content"] for c in chunks if c["type"] == "text_delta") == "Select an image to continue."
     assert chunks[-1] == {"type": "done", "content": "Select an image to continue."}
     assert main.conversations["real-stream-test"]
+
+
+def test_images_answer_head_so_restored_urls_can_be_checked():
+    with TestClient(app) as client:
+        assert client.head(f"/api/images/{source()}").status_code == 200
+        assert client.head("/api/images/000000000000").status_code == 404
+
+
+def test_prune_removes_only_images_past_their_lifetime():
+    old, fresh = source(), source()
+    ip.IMAGE_METADATA[old] = {"source_id": old}
+    expired = time.time() - ip.settings.max_image_age_seconds - 1
+    os.utime(ip.STORAGE / f"{old}.png", (expired, expired))
+    ip.prune_expired_images()
+    assert ip.get_image_path(old) is None
+    assert old not in ip.IMAGE_METADATA
+    assert ip.get_image_path(fresh)
