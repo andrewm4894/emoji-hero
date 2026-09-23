@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { apiUrl, editImage, getImageUrl, type EmojiReady } from "./api";
+import { trackEvent } from "./posthog";
 
 export function EmojiEditor({ emoji, mode, onSave, onClose }: {
   emoji: EmojiReady; mode: "crop" | "text";
@@ -98,10 +99,10 @@ export function EmojiCard({ emoji, disabled, onEdit }: {emoji: EmojiReady; disab
   const [failed, setFailed] = useState(false);
   return <div className="result-card">
     {failed ? <p role="status">Image unavailable. Search again to replace it.</p> : <>
-      <div className="result-previews"><img className="large-preview" src={apiUrl(emoji.image_url)} alt="Edited emoji preview" onError={() => setFailed(true)} />
+      <div className="result-previews"><img className="large-preview" src={apiUrl(emoji.image_url)} alt="Edited emoji preview" onError={() => { setFailed(true); trackEvent("emoji_image_unavailable", {image_id: emoji.image_id}); }} />
         <SlackReaction imageUrl={apiUrl(emoji.image_url)} />
       </div>
-      <div className="result-actions"><a href={apiUrl(emoji.download_url)} download>Download PNG</a><button disabled={disabled} onClick={() => onEdit("text")}>Edit text</button><button disabled={disabled} onClick={() => onEdit("crop")}>Crop</button></div>
+      <div className="result-actions"><a href={apiUrl(emoji.download_url)} download onClick={() => trackEvent("emoji_downloaded", {image_id: emoji.image_id})}>Download PNG</a><button disabled={disabled} onClick={() => onEdit("text")}>Edit text</button><button disabled={disabled} onClick={() => onEdit("crop")}>Crop</button></div>
     </>}
   </div>;
 }

@@ -1,4 +1,5 @@
 import io
+import time
 import uuid
 from pathlib import Path
 
@@ -21,6 +22,7 @@ IMAGE_EXTS = ("png", "jpg", "gif")
 
 async def download_image(url: str) -> tuple[str, str]:
     """Download an image from URL, save to storage, return (image_id, file_path)."""
+    prune_expired_images()
     async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
         resp = await client.get(url)
         resp.raise_for_status()
@@ -175,6 +177,18 @@ def prepare_for_slack(image_id: str) -> str:
 
     IMAGE_METADATA[new_id] = IMAGE_METADATA.get(image_id, {"source_id": image_id}).copy()
     return new_id
+
+
+def prune_expired_images() -> None:
+    """Delete stored images older than `max_image_age_seconds`."""
+    cutoff = time.time() - settings.max_image_age_seconds
+    for path in STORAGE.iterdir():
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                IMAGE_METADATA.pop(path.stem, None)
+        except FileNotFoundError:
+            pass
 
 
 def get_image_path(image_id: str) -> str | None:

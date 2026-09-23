@@ -24,11 +24,13 @@ Use **Hide result** for irrelevant images or a placeholder returned by the sourc
 Select an image to prepare it for Slack, then use **Crop** or **Edit text** to adjust
 it. The result shows an enlarged preview and a 20px reaction preview.
 
-The current conversation is saved in this browser. **New emoji** starts a separate
-conversation. Image files are stored on the server and may disappear after a
-server restart or deployment; unavailable images can be replaced with a new search.
+The current conversation is saved in this browser. **Start a new emoji** starts a
+separate conversation. Image files are stored on the server for
+`MAX_IMAGE_AGE_SECONDS` (default one hour). A server restart or deployment also
+removes them. On load, the app checks the saved images and removes failed turns and
+turns whose images are gone. If no saved image remains, it clears the conversation.
 
-Backend checks: run `uv run python -m pytest -q` and `uv run ruff check app/ tests/`
+Backend checks: run `uv run python -m pytest -q` (set `OPENROUTER_API_KEY` to any value if `.env` has none) and `uv run ruff check app/ tests/`
 from `backend/`.
 
 ## LLM configuration

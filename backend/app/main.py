@@ -27,7 +27,7 @@ from app.agent import EmojiDeps, emoji_agent
 from app.analytics import capture_exception, setup_otel, shutdown_otel
 from app.config import settings
 from app.editing import EditRequest, edit_image
-from app.image_processing import IMAGE_METADATA, get_image_path
+from app.image_processing import IMAGE_METADATA, get_image_path, prune_expired_images
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ def _extract_image_id(content) -> str | None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # OTEL is lazily initialized on first request so we can capture user.id
+    prune_expired_images()
     yield
     shutdown_otel()
 
@@ -203,7 +204,8 @@ async def chat(request: Request, body: ChatRequest):
     )
 
 
-@app.get("/api/images/{image_id}")
+# HEAD lets the client check that a restored image still exists.
+@app.api_route("/api/images/{image_id}", methods=["GET", "HEAD"])
 async def get_image(image_id: str):
     """Get a processed image by ID."""
     path = get_image_path(image_id)
