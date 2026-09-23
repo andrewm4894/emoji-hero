@@ -50,8 +50,8 @@ async function checkRestored(messages: Message[]) {
   for (const m of messages) {
     const emojis = m.emojis.filter(e => !missing.has(e.image_url));
     const results = m.results?.filter(r => !missing.has(r.image_url));
-    const lostImages = (m.emojis.length || m.results?.length) && !emojis.length && !results?.length;
-    if (m.role === "assistant" && !emojis.length && !results?.length && (m.failed || m.interrupted || lostImages)) {
+    const hadImages = m.emojis.length || m.results?.length;
+    if (m.role === "assistant" && !emojis.length && !results?.length && (m.failed || m.interrupted || hadImages)) {
       if (kept.at(-1)?.role === "user") kept.pop();
       continue;
     }
@@ -68,7 +68,7 @@ async function checkRestored(messages: Message[]) {
 
 function App() {
   const [initial] = useState(restore);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(initial.messages);
   const [sessionId, setSessionId] = useState(initial.sessionId);
   const [restoring, setRestoring] = useState(initial.messages.length > 0);
   const [expired, setExpired] = useState(false);
@@ -85,15 +85,15 @@ function App() {
     checkRestored(initial.messages).then(({messages: kept, cleared, ...counts}) => {
       if (!active) return;
       trackEvent("conversation_restored", {outcome: cleared ? "cleared" : "kept", message_count: initial.messages.length, ...counts});
-      if (cleared) { setSessionId(crypto.randomUUID()); setExpired(true); } else setMessages(kept);
+      setMessages(cleared ? [] : kept);
+      if (cleared) { setSessionId(crypto.randomUUID()); setExpired(true); }
       setRestoring(false);
     });
     return () => { active = false; };
   }, [initial]);
   useEffect(() => {
-    if (restoring) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({sessionId, messages})); } catch { /* Keep working without persistence. */ }
-  }, [restoring, sessionId, messages]);
+  }, [sessionId, messages]);
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
   const [themeOpen, setThemeOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -125,7 +125,7 @@ function App() {
   }, [messages, scrollToBottom]);
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || busy.current || restoring) return;
+    if (!text.trim() || busy.current) return;
     busy.current = true;
     stickToBottom.current = true;
     setInput(""); setIsStreaming(true); setStatus("Working…");

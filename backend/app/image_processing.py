@@ -1,3 +1,4 @@
+import contextlib
 import io
 import time
 import uuid
@@ -183,12 +184,10 @@ def prune_expired_images() -> None:
     """Delete stored images older than `max_image_age_seconds`."""
     cutoff = time.time() - settings.max_image_age_seconds
     for path in STORAGE.iterdir():
-        try:
+        with contextlib.suppress(FileNotFoundError):
             if path.stat().st_mtime < cutoff:
                 path.unlink()
                 IMAGE_METADATA.pop(path.stem, None)
-        except FileNotFoundError:
-            pass
 
 
 def get_image_path(image_id: str) -> str | None:
