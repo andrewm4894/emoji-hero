@@ -95,6 +95,11 @@ export interface SearchResult {
 
 export function apiUrl(path: string) { return path.startsWith("/") ? `${API_BASE}${path}` : path; }
 
+export async function imageExists(url: string): Promise<boolean> {
+  try { return (await fetch(apiUrl(url), {method: "HEAD"})).status !== 404; }
+  catch { return true; }
+}
+
 export async function editImage(body: {
   image_id: string;
   crop?: {x: number; y: number; width: number; height: number};

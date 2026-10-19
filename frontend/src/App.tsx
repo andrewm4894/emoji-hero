@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { streamChat, editImage, apiUrl, type EmojiReady, type SearchResult } from "./api";
+import { streamChat, editImage, apiUrl, imageExists, type EmojiReady, type SearchResult } from "./api";
 import { EmojiCard, EmojiEditor } from "./EmojiEditor";
 import { trackEvent } from "./posthog";
 import "./App.css";
@@ -10,6 +10,7 @@ interface Message {
   emojis: EmojiReady[];
   results?: SearchResult[];
   interrupted?: boolean;
+  failed?: boolean;
   hiddenResults?: string[];
 }
 
@@ -40,10 +41,37 @@ function restore(): {sessionId: string; messages: Message[]} {
   return {sessionId: crypto.randomUUID(), messages: []};
 }
 
+// Server images do not survive a restart, so drop restored turns that failed or lost their images.
+async function checkRestored(messages: Message[]) {
+  const urls = [...new Set(messages.flatMap(m => [...m.emojis, ...(m.results || [])].map(i => i.image_url)))];
+  const exists = await Promise.all(urls.map(imageExists));
+  const missing = new Set(urls.filter((_, i) => !exists[i]));
+  const kept: Message[] = [];
+  for (const m of messages) {
+    const emojis = m.emojis.filter(e => !missing.has(e.image_url));
+    const results = m.results?.filter(r => !missing.has(r.image_url));
+    const hadImages = m.emojis.length || m.results?.length;
+    if (m.role === "assistant" && !emojis.length && !results?.length && (m.failed || m.interrupted || hadImages)) {
+      if (kept.at(-1)?.role === "user") kept.pop();
+      continue;
+    }
+    kept.push({...m, emojis, results});
+  }
+  return {
+    messages: kept,
+    cleared: kept.length === 0 || (urls.length > 0 && missing.size === urls.length),
+    image_count: urls.length,
+    missing_image_count: missing.size,
+    dropped_message_count: messages.length - kept.length,
+  };
+}
+
 function App() {
   const [initial] = useState(restore);
   const [messages, setMessages] = useState<Message[]>(initial.messages);
   const [sessionId, setSessionId] = useState(initial.sessionId);
+  const [restoring, setRestoring] = useState(initial.messages.length > 0);
+  const [expired, setExpired] = useState(false);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState("");
@@ -51,6 +79,18 @@ function App() {
   const controller = useRef<AbortController | null>(null);
   const busy = useRef(false);
   const stickToBottom = useRef(true);
+  useEffect(() => {
+    if (!initial.messages.length) return;
+    let active = true;
+    checkRestored(initial.messages).then(({messages: kept, cleared, ...counts}) => {
+      if (!active) return;
+      trackEvent("conversation_restored", {outcome: cleared ? "cleared" : "kept", message_count: initial.messages.length, ...counts});
+      setMessages(cleared ? [] : kept);
+      if (cleared) { setSessionId(crypto.randomUUID()); setExpired(true); }
+      setRestoring(false);
+    });
+    return () => { active = false; };
+  }, [initial]);
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({sessionId, messages})); } catch { /* Keep working without persistence. */ }
   }, [sessionId, messages]);
@@ -101,11 +141,13 @@ function App() {
       await streamChat(text, sessionId, (chunk) => {
         if (chunk.type === "tool_call") { setStatus(toolLabel(chunk.tool || "")); return; }
         if (chunk.type === "done") { completed = true; return; }
+        if (chunk.type === "error") trackEvent("chat_error_shown", {source: "stream"});
+        if (chunk.type === "emoji_ready") trackEvent("emoji_ready", {image_id: chunk.image_id, source: "chat"});
         setMessages((prev) => {
           const last = {...prev[prev.length - 1]};
           if (chunk.type === "text_delta") last.content += chunk.content || "";
           if (chunk.type === "search_results") last.results = chunk.results || [];
-          if (chunk.type === "error") { last.content = chunk.content || "Could not complete the request. Please try again."; completed = true; }
+          if (chunk.type === "error") { last.content = chunk.content || "Could not complete the request. Please try again."; last.failed = true; completed = true; }
           if (chunk.type === "emoji_ready" && chunk.image_id && chunk.image_url && chunk.download_url && !last.emojis.some(e => e.image_id === chunk.image_id)) {
             last.emojis = [...last.emojis, {image_id:chunk.image_id, image_url:chunk.image_url, download_url:chunk.download_url, source_id:chunk.source_id, text_source_id:chunk.text_source_id, text:chunk.text, position:chunk.position, font_size:chunk.font_size}];
           }
@@ -115,7 +157,8 @@ function App() {
       if (!completed) throw new Error("Response interrupted. Please try again.");
       setMessages(prev => prev.map((m, i) => i === prev.length-1 ? {...m, interrupted:false} : m));
     } catch (error) {
-      setMessages(prev => prev.map((m, i) => i === prev.length-1 ? {...m, interrupted:false,
+      if (!abort.signal.aborted) trackEvent("chat_error_shown", {source: "request"});
+      setMessages(prev => prev.map((m, i) => i === prev.length-1 ? {...m, interrupted:false, failed: !abort.signal.aborted,
         content: m.content + (m.content ? "\n\n" : "") + (abort.signal.aborted ? "Stopped." : (error as Error).message)} : m));
     } finally { busy.current = false; setIsStreaming(false); setStatus(""); controller.current = null; }
   };
@@ -125,17 +168,21 @@ function App() {
     busy.current = true; setIsStreaming(true); setStatus("Preparing image…");
     try {
       const emoji = await editImage({image_id: result.image_id});
+      trackEvent("emoji_ready", {image_id: emoji.image_id, source: "select"});
       setMessages(prev => [...prev, {role:"user", content:"Selected an image.", emojis:[]},
         {role:"assistant", content:"", emojis:[emoji]}]);
       stickToBottom.current = true;
-    } catch (error) { setMessages(prev => [...prev, {role:"assistant", content:(error as Error).message, emojis:[]}]); }
+    } catch (error) {
+      trackEvent("chat_error_shown", {source: "select"});
+      setMessages(prev => [...prev, {role:"assistant", content:(error as Error).message, emojis:[], failed:true}]);
+    }
     finally { busy.current = false; setIsStreaming(false); setStatus(""); }
   }
 
   function newEmoji() {
     if (busy.current) return;
     trackEvent("conversation_reset", {message_count: messages.length});
-    setMessages([]); setSessionId(crypto.randomUUID()); setInput("");
+    setMessages([]); setSessionId(crypto.randomUUID()); setInput(""); setExpired(false);
     inputRef.current?.focus();
   }
 
@@ -185,10 +232,11 @@ function App() {
         </div>
       </header>
 
-      {messages.length === 0 ? (
+      {restoring ? null : messages.length === 0 ? (
         <div className="welcome">
           <h2>Find an emoji</h2>
           <p>Search and edit images for use as Slack emoji.</p>
+          {expired && <p role="status">Your last conversation expired because its images are no longer available.</p>}
         </div>
       ) : (
         <div className="messages" role="log" aria-label="Emoji conversation" onScroll={(e) => {
@@ -207,7 +255,7 @@ function App() {
         </div>
       )}
 
-      <div className={`input-area${messages.length === 0 ? " input-welcome" : ""}`}>
+      <div className={`input-area${messages.length === 0 ? " input-welcome" : ""}`} hidden={restoring}>
         {status && <div className="progress" role="status">{status}{controller.current && <button onClick={() => controller.current?.abort()}>Stop</button>}</div>}
         <form onSubmit={handleSubmit}>
           <input
@@ -242,6 +290,7 @@ function App() {
         )}
       </div>
       {editor && <EmojiEditor emoji={editor.emoji} mode={editor.mode} onClose={() => setEditor(null)} onSave={(emoji) => {
+        trackEvent("emoji_ready", {image_id: emoji.image_id, source: editor.mode});
         setMessages(prev => [...prev, {role:"assistant", content: editor.mode === "crop" ? "Crop updated." : "Text updated.", emojis:[emoji]}]);
         stickToBottom.current = true;
       }} />}
