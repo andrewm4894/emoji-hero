@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from opentelemetry import trace
 from pydantic import BaseModel, Field
@@ -23,6 +23,7 @@ from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import TextPart
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from tavily.errors import InvalidAPIKeyError
 
 from app.agent import EmojiDeps, emoji_agent
 from app.analytics import capture_exception, setup_otel, shutdown_otel
@@ -41,6 +42,15 @@ conversations: dict[str, list] = {}
 # make_slack_ready's output format is defined in agent.py as
 # "Slack-ready! Final image_id: {hex12} ..." — parse that known shape.
 _SLACK_READY_ID_RE = re.compile(r"image_id:\s*([a-f0-9]{12})")
+
+
+def _credential_failure(exc: BaseException) -> tuple[str, int | None] | None:
+    """Name the upstream whose credential was rejected, or None for other errors."""
+    if isinstance(exc, ModelHTTPError) and exc.status_code in (401, 403):
+        return "model_provider", exc.status_code
+    if isinstance(exc, InvalidAPIKeyError):
+        return "image_search", None
+    return None
 
 
 def _extract_image_id(content) -> str | None:
@@ -68,6 +78,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def capture_unhandled_exception(request: Request, exc: Exception):
+    """Report any exception a route did not handle, then return a plain 500."""
+    logger.exception("Unhandled error on %s", request.url.path)
+    session_id = request.headers.get("x-posthog-session-id")
+    capture_exception(
+        exc,
+        distinct_id=request.headers.get("x-posthog-distinct-id"),
+        properties={
+            "path": request.url.path,
+            **({"$session_id": session_id} if session_id else {}),
+        },
+    )
+    return JSONResponse({"detail": "Internal server error"}, status_code=500)
 
 
 class ChatRequest(BaseModel):
@@ -183,16 +209,29 @@ async def chat(request: Request, body: ChatRequest):
             # By now the 200 status and SSE headers are already sent, so raising
             # would just truncate the stream and the client would see nothing —
             # emit a typed error chunk instead. Details stay in server logs.
-            if isinstance(exc, ModelHTTPError) and exc.status_code in (401, 403):
+            credential_failure = _credential_failure(exc)
+            if credential_failure:
+                provider, status_code = credential_failure
                 # The provider rejected our credential. This is a configuration
                 # failure, not a transient one: retrying cannot succeed until an
-                # operator rotates the key. Tell the user that plainly and log
-                # it, but do not mint a fresh error tracking issue per request.
-                logger.error(
-                    "Model provider rejected credential (HTTP %s)", exc.status_code
+                # operator rotates the key. A fixed fingerprint keeps every
+                # rejection on one error tracking issue, so an outage stays
+                # visible without minting an issue per request.
+                logger.error("%s rejected credential (HTTP %s)", provider, status_code or "n/a")
+                capture_exception(
+                    exc,
+                    distinct_id=ph_distinct_id,
+                    properties={
+                        "$exception_fingerprint": f"{provider}-credential-rejected",
+                        "provider": provider,
+                        "provider_status_code": status_code,
+                        "error_kind": "provider_auth",
+                        **({"$session_id": ph_session_id} if ph_session_id else {}),
+                    },
                 )
+                error_kind = "provider_auth"
                 content = (
-                    "The AI provider rejected our credential. An operator needs "
+                    "An upstream service rejected our credential. An operator needs "
                     "to rotate the API key before chat works again — retrying "
                     "will not help until then."
                 )
@@ -211,7 +250,10 @@ async def chat(request: Request, body: ChatRequest):
                     "Something went wrong while generating a response. "
                     "Please try again."
                 )
-            chunk = json.dumps({"type": "error", "content": content})
+                error_kind = "transient"
+            chunk = json.dumps(
+                {"type": "error", "content": content, "error_kind": error_kind}
+            )
             yield f"data: {chunk}\n\n"
 
     return StreamingResponse(

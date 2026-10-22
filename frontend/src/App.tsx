@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { streamChat, editImage, apiUrl, type EmojiReady, type SearchResult } from "./api";
 import { EmojiCard, EmojiEditor } from "./EmojiEditor";
-import { trackEvent } from "./posthog";
+import { reportError, trackEvent } from "./posthog";
 import "./App.css";
 
 interface Message {
@@ -101,11 +101,15 @@ function App() {
       await streamChat(text, sessionId, (chunk) => {
         if (chunk.type === "tool_call") { setStatus(toolLabel(chunk.tool || "")); return; }
         if (chunk.type === "done") { completed = true; return; }
+        if (chunk.type === "error") {
+          completed = true;
+          reportError("chat_stream", chunk.content || "Chat stream error", {error_kind: chunk.error_kind});
+        }
         setMessages((prev) => {
           const last = {...prev[prev.length - 1]};
           if (chunk.type === "text_delta") last.content += chunk.content || "";
           if (chunk.type === "search_results") last.results = chunk.results || [];
-          if (chunk.type === "error") { last.content = chunk.content || "Could not complete the request. Please try again."; completed = true; }
+          if (chunk.type === "error") last.content = chunk.content || "Could not complete the request. Please try again.";
           if (chunk.type === "emoji_ready" && chunk.image_id && chunk.image_url && chunk.download_url && !last.emojis.some(e => e.image_id === chunk.image_id)) {
             last.emojis = [...last.emojis, {image_id:chunk.image_id, image_url:chunk.image_url, download_url:chunk.download_url, source_id:chunk.source_id, text_source_id:chunk.text_source_id, text:chunk.text, position:chunk.position, font_size:chunk.font_size}];
           }
@@ -115,6 +119,7 @@ function App() {
       if (!completed) throw new Error("Response interrupted. Please try again.");
       setMessages(prev => prev.map((m, i) => i === prev.length-1 ? {...m, interrupted:false} : m));
     } catch (error) {
+      if (!abort.signal.aborted) reportError("chat_request", error);
       setMessages(prev => prev.map((m, i) => i === prev.length-1 ? {...m, interrupted:false,
         content: m.content + (m.content ? "\n\n" : "") + (abort.signal.aborted ? "Stopped." : (error as Error).message)} : m));
     } finally { busy.current = false; setIsStreaming(false); setStatus(""); controller.current = null; }
@@ -128,7 +133,10 @@ function App() {
       setMessages(prev => [...prev, {role:"user", content:"Selected an image.", emojis:[]},
         {role:"assistant", content:"", emojis:[emoji]}]);
       stickToBottom.current = true;
-    } catch (error) { setMessages(prev => [...prev, {role:"assistant", content:(error as Error).message, emojis:[]}]); }
+    } catch (error) {
+      reportError("select_image", error);
+      setMessages(prev => [...prev, {role:"assistant", content:(error as Error).message, emojis:[]}]);
+    }
     finally { busy.current = false; setIsStreaming(false); setStatus(""); }
   }
 

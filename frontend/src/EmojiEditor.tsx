@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { apiUrl, editImage, getImageUrl, type EmojiReady } from "./api";
+import { reportError } from "./posthog";
 
 export function EmojiEditor({ emoji, mode, onSave, onClose }: {
   emoji: EmojiReady; mode: "crop" | "text";
@@ -21,7 +22,7 @@ export function EmojiEditor({ emoji, mode, onSave, onClose }: {
         ...(mode === "crop" ? {crop} : {}), text, position, font_size: fontSize});
       onSave({...result, source_id: mode === "text" ? emoji.source_id || sourceId : sourceId});
       onClose();
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { reportError(`edit_${mode}`, e); setError((e as Error).message); }
     finally { setBusy(false); }
   }
   return <dialog ref={dialog} className="editor" onCancel={(e) => { e.preventDefault(); if (!busy) onClose(); }}>

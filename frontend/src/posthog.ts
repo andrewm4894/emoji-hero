@@ -42,6 +42,19 @@ export function getSessionId(): string {
   return posthog.get_session_id?.() || "";
 }
 
+// Errors the UI catches and shows never reach exception autocapture, so report
+// each one as an exception plus an event the chat funnel can count.
+export function reportError(
+  surface: string,
+  error: unknown,
+  properties?: Record<string, unknown>
+) {
+  const err = error instanceof Error ? error : new Error(String(error));
+  const props = { surface, error_message: err.message, ...properties };
+  posthog.capture("chat_error_shown", props);
+  posthog.captureException(err, props);
+}
+
 export function trackEvent(
   event: string,
   properties?: Record<string, unknown>
