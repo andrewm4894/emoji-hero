@@ -22,6 +22,7 @@ export interface ChatChunk {
   font_size?: number;
   results?: SearchResult[];
   content?: string;
+  error_kind?: string;
   tool?: string;
   args?: Record<string, unknown>;
   image_id?: string;
