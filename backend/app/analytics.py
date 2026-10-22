@@ -1,8 +1,12 @@
+import logging
 import os
 import threading
 
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -12,6 +16,7 @@ from pydantic_ai import Agent
 from app.config import settings
 
 _provider: TracerProvider | None = None
+_log_provider: LoggerProvider | None = None
 _init_lock = threading.Lock()
 
 _posthog: Posthog | None = None
@@ -84,9 +89,51 @@ def setup_otel(user_id: str | None = None) -> TracerProvider | None:
         return _provider
 
 
+def setup_logs() -> LoggerProvider | None:
+    """Send application and uvicorn logs to PostHog Logs over OTLP.
+
+    Railway keeps stdout only briefly, so this is where logs stay searchable.
+    The handler goes on named loggers, not the root, so exporter and SDK
+    loggers never feed back into it.
+    """
+    global _log_provider
+    if _log_provider is not None or not settings.posthog_api_key:
+        return _log_provider
+
+    _log_provider = LoggerProvider(
+        resource=Resource.create(
+            {
+                "service.name": "emoji-hero",
+                # Railway sets this on every deploy; anything else is a local run.
+                "deployment.environment.name": os.getenv(
+                    "RAILWAY_ENVIRONMENT_NAME", "local"
+                ),
+            }
+        )
+    )
+    _log_provider.add_log_record_processor(
+        BatchLogRecordProcessor(
+            OTLPLogExporter(
+                endpoint=f"{settings.posthog_host.rstrip('/')}/i/v1/logs",
+                headers={"Authorization": f"Bearer {settings.posthog_api_key}"},
+                timeout=5,
+            )
+        )
+    )
+    handler = LoggingHandler(level=logging.INFO, logger_provider=_log_provider)
+    for name in ("app", "uvicorn.error", "uvicorn.access"):
+        named = logging.getLogger(name)
+        named.addHandler(handler)
+        named.setLevel(logging.INFO)
+    logging.getLogger("app").info("PostHog log export enabled")
+    return _log_provider
+
+
 def shutdown_otel() -> None:
-    """Shutdown the OTEL provider if initialized."""
+    """Shutdown the OTEL providers if initialized."""
     if _provider:
         _provider.shutdown()
+    if _log_provider:
+        _log_provider.shutdown()
     if _posthog:
         _posthog.shutdown()

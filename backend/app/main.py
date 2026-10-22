@@ -26,7 +26,7 @@ from slowapi.util import get_remote_address
 from tavily.errors import InvalidAPIKeyError
 
 from app.agent import EmojiDeps, emoji_agent
-from app.analytics import capture_exception, setup_otel, shutdown_otel
+from app.analytics import capture_exception, setup_logs, setup_otel, shutdown_otel
 from app.config import settings
 from app.editing import EditRequest, edit_image
 from app.image_processing import IMAGE_METADATA, get_image_path
@@ -62,7 +62,8 @@ def _extract_image_id(content) -> str | None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # OTEL is lazily initialized on first request so we can capture user.id
+    setup_logs()
+    # OTEL tracing is lazily initialized on first request so we can capture user.id
     yield
     shutdown_otel()
 
